@@ -25,7 +25,7 @@ endif()
 if (BUILD_PROVIDER_YT)
 	message("Building YouTube provider")
 	add_library(ProviderYT SHARED providers/yt/YTProvider.cpp providers/yt/YTVManager.cpp providers/yt/YoutubeMusicPlayer.cpp)
-	target_link_libraries(ProviderYT TeaMusic TeaMusicProviderOpus ThreadPoolStatic stdc++fs.a)
+	target_link_libraries(ProviderYT TeaMusic ProviderOpus ThreadPoolStatic stdc++fs.a)
 	set_target_properties(ProviderYT
 			PROPERTIES
 			PREFIX "001" #Library load order (Requires opus provider to load)
