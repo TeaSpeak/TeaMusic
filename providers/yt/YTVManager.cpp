@@ -1,5 +1,5 @@
-#include <misc/pstream.h>
 #include <providers/yt/YoutubeMusicPlayer.h>
+#include <misc/pstream.h>
 #include "YTVManager.h"
 
 using namespace std;
