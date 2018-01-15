@@ -8,9 +8,9 @@ set(CMAKE_LIBRARY_OUTPUT_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/bin/providers")
 option(BUILD_PROVIDER_OPUS "Build the opus provider" ON)
 if(BUILD_PROVIDER_OPUS)
 	message("Building OPUS provider")
-	add_library(TeaMusicProviderOpus SHARED providers/opus/OpusProvider.cpp providers/opus/OpusMusicPlayer.cpp)
-	target_link_libraries(TeaMusicProviderOpus TeaMusic opus opusfile)
-	set_target_properties(TeaMusicProviderOpus
+	add_library(ProviderOpus SHARED providers/opus/OpusProvider.cpp providers/opus/OpusMusicPlayer.cpp)
+	target_link_libraries(ProviderOpus TeaMusic opus opusfile)
+	set_target_properties(ProviderOpus
 			PROPERTIES
 			PREFIX "000" #Library load order (dont requre other providers)
 	)
@@ -24,9 +24,9 @@ else()
 endif()
 if (BUILD_PROVIDER_YT)
 	message("Building YouTube provider")
-	add_library(TeaMusicProviderYT SHARED providers/yt/YTProvider.cpp providers/yt/YTVManager.cpp providers/yt/YoutubeMusicPlayer.cpp)
-	target_link_libraries(TeaMusicProviderYT TeaMusic TeaMusicProviderOpus ThreadPoolStatic stdc++fs.a)
-	set_target_properties(TeaMusicProviderYT
+	add_library(ProviderYT SHARED providers/yt/YTProvider.cpp providers/yt/YTVManager.cpp providers/yt/YoutubeMusicPlayer.cpp)
+	target_link_libraries(ProviderYT TeaMusic TeaMusicProviderOpus ThreadPoolStatic stdc++fs.a)
+	set_target_properties(ProviderYT
 			PROPERTIES
 			PREFIX "001" #Library load order (Requires opus provider to load)
 	)
