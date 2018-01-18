@@ -14,13 +14,13 @@ namespace yt {
 
     class YTVManager {
         public:
-            YTVManager(sql::SqlData*);
+            explicit YTVManager(sql::SqlData*);
             ~YTVManager();
 
             bool setup(){ return true; }
 
             threads::Future<std::shared_ptr<AudioInfo>> downloadAudio(std::string);
-            threads::Future<std::shared_ptr<music::MusicPlayer>> playAudio(std::string);
+            threads::Future<std::shared_ptr<music::MusicPlayer>> playAudio(const std::string&);
         private:
             fs::path root;
             sql::SqlData* sql;

@@ -1,6 +1,7 @@
 #include <providers/yt/YoutubeMusicPlayer.h>
 #include <misc/pstream.h>
 #include "YTVManager.h"
+#include "../../../MusicBot/include/MusicPlayer.h"
 
 using namespace std;
 using namespace yt;
@@ -28,36 +29,45 @@ threads::Future<std::shared_ptr<AudioInfo>> YTVManager::downloadAudio(std::strin
     else {
         _threads.execute([future, video, videoPath](){
             auto command = "youtube-dl --print-json -x --audio-format opus --audio-quality 0 -o \"" + videoPath.parent_path().string() + "/v" + video + ".%(ext)s\" https://www.youtube.com/watch?v=" + video;
-            redi::ipstream proc(command, redi::pstreams::pstdout | redi::pstreams::pstderr);
 
+            music::log::log(music::log::debug, "[YT-DL] Command: " + command);
+            //system(command.c_str());
+
+            redi::pstream proc;
+            proc.open(command, redi::pstreams::pstdout | redi::pstreams::pstderr | redi::pstreams::pstdin);
             string json;
             string err;
+            size_t bufferLength = 512;
+            char buffer[bufferLength];
             string part;
             while(!proc.eof()) {
                 usleep(10);
-                part = "";
-                proc.out() >> part;
-                json += part;
+                if(proc.out().rdbuf()->in_avail()){
+                    auto read = proc.out().readsome(buffer, bufferLength);
+                    if(read > 0) json += string(buffer, read);
+                }
 
-                part = "";
-                proc.err() >> part;
-                err += part;
+                if(proc.err().rdbuf()->in_avail()){
+                    auto read = proc.err().readsome(buffer, bufferLength);
+                    if(read > 0) err += string(buffer, read);
+                }
             }
-            if(proc.fail() && json.empty()) {
-                stringstream ss;
-                ss << proc.rdbuf();
-                err = ss.str();
+            if(err.find('\n') == err.length() - 1) err = err.substr(0, err.length() - 1);
+            if(!err.empty()) {
+                music::log::log(music::log::err, "[YT-DL] Invalid execution of command " + command);
+                music::log::log(music::log::err, "[YT-DL] Message: " + err);
+            }
+            if(!err.empty() || (proc.fail() && json.empty())) {
                 future.executionFailed(err);
             } else {
                 future.executionSucceed(std::make_shared<AudioInfo>(AudioInfo{"unknown", "unknown", videoPath.string()}));
             }
-
         });
     }
     return future;
 }
 
-threads::Future<std::shared_ptr<music::MusicPlayer>> YTVManager::playAudio(std::string video) {
+threads::Future<std::shared_ptr<music::MusicPlayer>> YTVManager::playAudio(const std::string& video) {
     threads::Future<std::shared_ptr<music::MusicPlayer>> future;
 
     auto fut = downloadAudio(video);
