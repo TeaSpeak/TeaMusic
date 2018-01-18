@@ -1,7 +1,7 @@
 #include <providers/yt/YoutubeMusicPlayer.h>
 #include <misc/pstream.h>
+#include "include/MusicPlayer.h"
 #include "YTVManager.h"
-#include "../../../MusicBot/include/MusicPlayer.h"
 
 using namespace std;
 using namespace yt;

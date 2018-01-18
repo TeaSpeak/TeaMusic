@@ -23,6 +23,19 @@
 #endif
 
 namespace music {
+    namespace log {
+        enum Level { //Copy for spdlog::level::level_enum
+            trace = 0,
+            debug = 1,
+            info = 2,
+            warn = 3,
+            err = 4,
+            critical = 5,
+            off = 6
+        };
+        extern void log(const Level&, const std::string&);
+    };
+
     struct SampleSegment {
         int16_t* segments;
         size_t segmentLength;
