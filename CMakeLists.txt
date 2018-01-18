@@ -5,6 +5,7 @@ set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11 -fpermissive -Wall -Wno-sign-
 set(CMAKE_INCLUDE_CURRENT_DIR ON)
 set(CMAKE_LIBRARY_OUTPUT_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/bin/providers")
 
+include_directories(include/)
 option(BUILD_PROVIDER_OPUS "Build the opus provider" ON)
 if(BUILD_PROVIDER_OPUS)
 	message("Building OPUS provider")

@@ -59,6 +59,7 @@ namespace music {
         EVENT_STOP,
         EVENT_PAUSE,
         EVENT_ABORT,
+        EVENT_END,
         EVENT_ERROR
     };
 

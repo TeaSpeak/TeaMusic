@@ -1,5 +1,4 @@
-#include <include/MusicPlayer.h>
-#include <cstring>
+#include "MusicPlayer.h"
 #include "OpusMusicPlayer.h"
 
 using namespace music;
@@ -115,6 +114,7 @@ bool OpusMusicPlayer::finished() {
 
 void OpusMusicPlayer::endReached() {
     this->reachedEnd = true;
+    this->fireEvent(music::EVENT_END);
 }
 
 void OpusMusicPlayer::readNextSegment() {
