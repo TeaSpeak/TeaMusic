@@ -48,7 +48,7 @@ std::shared_ptr<music::manager::PlayerProvider> create_provider() {
     }
     if(err.find('\n') == err.length() - 1) err = err.substr(0, err.length() - 1);
     if(!err.empty()) {
-        music::log::log(music::log::err, "[YT-DL] Could not find youtube-dl (" + err + ")");
+        music::log::log(music::log::err, "[YT-DL] Could not find youtube-dl (Error: \"" + err + "\")");
         music::log::log(music::log::err, "[YT-DL] How to download/install youtube-dl: https://github.com/rg3/youtube-dl/blob/master/README.md#installation");
         return nullptr;
     }
