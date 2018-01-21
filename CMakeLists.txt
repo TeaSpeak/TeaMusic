@@ -5,11 +5,11 @@ set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11 -fpermissive -Wall -Wno-sign-
 set(CMAKE_INCLUDE_CURRENT_DIR ON)
 set(CMAKE_LIBRARY_OUTPUT_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/bin/providers")
 
-include_directories(include/)
+set(HEADERS include/MusicPlayer.h)
 option(BUILD_PROVIDER_OPUS "Build the opus provider" ON)
 if(BUILD_PROVIDER_OPUS)
 	message("Building OPUS provider")
-	add_library(ProviderOpus SHARED providers/opus/OpusProvider.cpp providers/opus/OpusMusicPlayer.cpp)
+	add_library(ProviderOpus SHARED ${HEADERS} providers/opus/OpusProvider.cpp providers/opus/OpusMusicPlayer.cpp)
 	target_link_libraries(ProviderOpus TeaMusic opus opusfile)
 	set_target_properties(ProviderOpus
 			PROPERTIES
@@ -25,7 +25,7 @@ else()
 endif()
 if (BUILD_PROVIDER_YT)
 	message("Building YouTube provider")
-	add_library(ProviderYT SHARED providers/yt/YTProvider.cpp providers/yt/YTVManager.cpp providers/yt/YoutubeMusicPlayer.cpp)
+	add_library(ProviderYT SHARED ${HEADERS} providers/yt/YTProvider.cpp providers/yt/YTVManager.cpp providers/yt/YoutubeMusicPlayer.cpp)
 	target_link_libraries(ProviderYT TeaMusic ProviderOpus ThreadPoolStatic stdc++fs.a)
 	set_target_properties(ProviderYT
 			PROPERTIES
