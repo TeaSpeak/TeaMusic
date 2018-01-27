@@ -1,4 +1,4 @@
-#include "MusicPlayer.h"
+#include <include/MusicPlayer.h>
 #include "OpusMusicPlayer.h"
 
 using namespace music;

@@ -1,5 +1,4 @@
 #include <include/MusicPlayer.h>
-#include <bits/shared_ptr.h>
 #include <ThreadPool/Mutex.h>
 #include <opus/opusfile.h>
 #include <memory>

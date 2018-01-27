@@ -37,6 +37,12 @@ namespace music {
     };
 
     struct SampleSegment {
+        /**
+         * Array of samples.
+         * Length      : channels * segmentLength
+         * char length : channels * segmentLength * sizeof(s16le)
+         * Encoding    : s16le
+         */
         int16_t* segments;
         size_t segmentLength;
         int channels;
@@ -73,6 +79,8 @@ namespace music {
             virtual void pause() = 0;
             virtual void stop() = 0;
             virtual bool finished() = 0;
+
+            virtual bool seek_supported() = 0;
             virtual void forward(const PlayerUnits&) = 0;
             virtual void rewind(const PlayerUnits&) = 0;
 
@@ -139,6 +147,8 @@ namespace music {
                 this->_preferredSampleCount = size;
             }
 
+            bool seek_supported() override { return true; }
+
             void registerEventHandler(const std::string&, const std::function<void(MusicEvent)>& function) override;
 
             void unregisterEventHandler(const std::string&) override;
@@ -166,15 +176,29 @@ namespace music {
             std::string typeName;
 
             virtual threads::Future<std::shared_ptr<MusicPlayer>> createPlayer(const std::string&) = 0;
-            virtual bool acceptType(const std::string& type){ return !typeName.empty() && type == typeName; } //Test type
-            virtual bool acceptString(const std::string& str){ return !typeName.empty() && str.find("." + typeName) == str.length() - ("." + typeName).length(); } //Test ending
+            virtual bool acceptType(const std::string& type) = 0;
+            virtual bool acceptProtocol(const std::string&) = 0;
+
+            virtual bool acceptString(const std::string& str){
+                auto index = str.find_last_of('.');
+                if(index != std::string::npos) {
+                    if(this->acceptType(str.substr(index + 1))) return true;
+                }
+                index = str.find_first_of(':');
+                if(index != std::string::npos) {
+                    if(this->acceptProtocol(str.substr(0, index))) return true;
+                }
+                return false;
+            }
+
+            virtual size_t weight(const std::string&) { return 0; }
         };
 
         extern std::deque<std::shared_ptr<PlayerProvider>> registeredTypes();
         extern void registerType(const std::shared_ptr<PlayerProvider>&);
 
         //empty for not set
-        extern std::shared_ptr<PlayerProvider> resolveProvider(const std::string& type, const std::string& str);
+        extern std::shared_ptr<PlayerProvider> resolveProvider(const std::string& provName, const std::string& str);
         template <typename T>
         inline std::deque<std::shared_ptr<PlayerProvider>> resolveProvider(){
             std::deque<std::shared_ptr<PlayerProvider>> result;

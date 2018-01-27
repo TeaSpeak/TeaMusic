@@ -14,6 +14,14 @@ class OpusProvider : public music::manager::PlayerProvider {
             future.executionSucceed(std::dynamic_pointer_cast<music::MusicPlayer>(player));
             return future;
         }
+
+        bool acceptType(const std::string &type) override {
+            return type == "opus";
+        }
+
+        bool acceptProtocol(const std::string &string) override {
+            return false;
+        }
 };
 
 std::shared_ptr<music::manager::PlayerProvider> create_provider() {

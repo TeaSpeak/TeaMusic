@@ -1,13 +1,13 @@
 #pragma once
 
-#include "providers/opus/OpusMusicPlayer.h"
+#include <providers/ffmpeg/FFMpegMusicPlayer.h>
 
 namespace yt {
     class AudioInfo;
 }
 namespace music {
     namespace player {
-        class YoutubeMusicPlayer : public OpusMusicPlayer {
+        class YoutubeMusicPlayer : public FFMpegMusicPlayer {
             public:
                 YoutubeMusicPlayer(std::shared_ptr<yt::AudioInfo>);
                 ~YoutubeMusicPlayer();

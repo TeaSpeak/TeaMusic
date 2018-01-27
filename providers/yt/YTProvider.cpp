@@ -1,14 +1,15 @@
 #include <misc/pstream.h>
-#include "YTProvider.h"
 #include "YoutubeMusicPlayer.h"
+#include "YTProvider.h"
 
 using namespace std;
+using namespace music::manager;
 
 yt::YTVManager* manager = nullptr;
-class YTProvider : public music::manager::PlayerProvider {
+class YTProvider : public PlayerProvider {
     public:
         YTProvider() {
-            this->typeName = "";
+            this->typeName = "yt";
             this->providerName = "YouTube";
             this->providerDescription = "Playback yt videos";
         }
@@ -16,12 +17,22 @@ class YTProvider : public music::manager::PlayerProvider {
             return manager->playAudio(string);
         }
 
+
         bool acceptString(const std::string &str) override {
-            return str.find("http://") != std::string::npos || str.find("https://") != std::string::npos;
+            if(str.find("youtube") == std::string::npos && str.find("youtu.be") == std::string::npos) return false; //https://youtu.be/j4dMnAPZu70
+            return PlayerProvider::acceptString(str);
+        }
+
+        bool acceptProtocol(const std::string &prot) override {
+            return prot == "https" || prot == "http";
         }
 
         bool acceptType(const std::string &type) override {
-            return type == "yt" || type == "yt-dl";
+            return false;
+        }
+
+        size_t weight(const std::string &string1) override {
+            return this->acceptString(string1) ? 100 : 0;
         }
 };
 
@@ -34,14 +45,14 @@ std::shared_ptr<music::manager::PlayerProvider> create_provider() {
     size_t bufferLength = 512;
     char buffer[bufferLength];
     string part;
-    while(!proc.eof()) {
+    while(!proc.rdbuf()->exited()) {
         usleep(10);
-        if(proc.out().rdbuf()->in_avail()){
+        if(proc.out().rdbuf()->in_avail() > 0){
             auto read = proc.out().readsome(buffer, bufferLength);
             if(read > 0) json += string(buffer, read);
         }
 
-        if(proc.err().rdbuf()->in_avail()){
+        if(proc.err().rdbuf()->in_avail() > 0){
             auto read = proc.err().readsome(buffer, bufferLength);
             if(read > 0) err += string(buffer, read);
         }

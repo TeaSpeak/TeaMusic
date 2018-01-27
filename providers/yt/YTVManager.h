@@ -1,15 +1,17 @@
 #pragma once
 
-#include <sql/SqlQuery.h>
 #include <experimental/filesystem>
 #include "include/MusicPlayer.h"
+#include <sql/SqlQuery.h>
 
 namespace fs = std::experimental::filesystem;
 namespace yt {
     struct AudioInfo {
         std::string title;
         std::string description;
-        std::string file;
+        std::string stream_url;
+
+        bool live_stream;
     };
 
     class YTVManager {
