@@ -173,8 +173,6 @@ namespace music {
             std::string providerName;
             std::string providerDescription;
 
-            std::string typeName;
-
             virtual threads::Future<std::shared_ptr<MusicPlayer>> createPlayer(const std::string&) = 0;
             virtual bool acceptType(const std::string& type) = 0;
             virtual bool acceptProtocol(const std::string&) = 0;

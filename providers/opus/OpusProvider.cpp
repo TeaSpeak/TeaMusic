@@ -4,7 +4,6 @@
 class OpusProvider : public music::manager::PlayerProvider {
     public:
         OpusProvider() {
-            this->typeName = "opus";
             this->providerName = "Opus";
             this->providerDescription = "Playback opus music files";
         }

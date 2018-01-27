@@ -9,7 +9,6 @@ yt::YTVManager* manager = nullptr;
 class YTProvider : public PlayerProvider {
     public:
         YTProvider() {
-            this->typeName = "yt";
             this->providerName = "YouTube";
             this->providerDescription = "Playback yt videos";
         }

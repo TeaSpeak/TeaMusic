@@ -82,7 +82,6 @@ inline pair<string, string> executeCommand(const string& cmd){
 class FFMpegProvider : public music::manager::PlayerProvider {
     public:
         FFMpegProvider() {
-            this->typeName = "";
             this->providerName = "FFMpeg";
             this->providerDescription = "FFMpeg playback support";
         }
