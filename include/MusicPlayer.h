@@ -107,7 +107,7 @@ namespace music {
 
     class AbstractMusicPlayer : public MusicPlayer {
         public:
-            AbstractMusicPlayer() { }
+            AbstractMusicPlayer() = default;
             ~AbstractMusicPlayer() { }
 
             PlayerState state() override {
