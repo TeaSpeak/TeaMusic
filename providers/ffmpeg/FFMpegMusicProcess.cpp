@@ -123,14 +123,19 @@ inline std::string buildTime(PlayerUnits units){
      Press [q] to stop, [?] for help
   */
 
+void FFMpegMusicPlayer::destroyProcess() {
+    if(!this->stream) return;
+
+    this->end_reached = true;
+    if(this->stream->stream) this->stream->stream;
+    this->stream = nullptr;
+    this->end_reached = false;
+}
+
 void FFMpegMusicPlayer::spawnProcess() {
-    if(this->stream) {
-        this->stream->stream->close();
-        this->stream.reset();
-    }
-    if(this->nextSegment){
-        this->nextSegment = nullptr;
-    }
+    this->destroyProcess();
+    this->nextSegment = nullptr;
+    this->end_reached = false;
 
     char commandBuffer[1024];
     sprintf(commandBuffer, ffmpeg_command_args, buildTime(this->seekOffset).c_str(), this->fname.c_str());

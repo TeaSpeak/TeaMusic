@@ -14,12 +14,12 @@ class OpusProvider : public music::manager::PlayerProvider {
             return future;
         }
 
-        bool acceptType(const std::string &type) override {
-            return type == "opus";
+        std::vector<std::string> availableFormats() override {
+            return {"opus"};
         }
 
-        bool acceptProtocol(const std::string &string) override {
-            return false;
+        std::vector<std::string> availableProtocols() override {
+            return {};
         }
 };
 

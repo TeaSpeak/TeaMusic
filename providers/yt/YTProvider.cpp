@@ -22,12 +22,12 @@ class YTProvider : public PlayerProvider {
             return PlayerProvider::acceptString(str);
         }
 
-        bool acceptProtocol(const std::string &prot) override {
-            return prot == "https" || prot == "http";
+        vector<string> availableFormats() override {
+            return {};
         }
 
-        bool acceptType(const std::string &type) override {
-            return false;
+        vector<string> availableProtocols() override {
+            return {"http", "https"};
         }
 
         size_t weight(const std::string &string1) override {

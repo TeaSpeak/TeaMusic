@@ -174,8 +174,20 @@ namespace music {
             std::string providerDescription;
 
             virtual threads::Future<std::shared_ptr<MusicPlayer>> createPlayer(const std::string&) = 0;
-            virtual bool acceptType(const std::string& type) = 0;
-            virtual bool acceptProtocol(const std::string&) = 0;
+            virtual std::vector<std::string> availableFormats() = 0;
+            virtual std::vector<std::string> availableProtocols() = 0;
+
+            bool acceptProtocol(const std::string& protocol) {
+                for(const auto& entry : availableProtocols())
+                    if(entry == protocol) return true;
+                return false;
+            }
+
+            bool acceptType(const std::string &type) {
+                for(const auto& entry : availableFormats())
+                    if(entry == type) return true;
+                return false;
+            }
 
             virtual bool acceptString(const std::string& str){
                 auto index = str.find_last_of('.');

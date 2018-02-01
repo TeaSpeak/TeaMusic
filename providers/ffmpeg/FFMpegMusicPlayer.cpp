@@ -27,6 +27,7 @@ bool FFMpegMusicPlayer::initialize() {
 }
 
 void FFMpegMusicPlayer::play() {
+    this->end_reached = false;
     AbstractMusicPlayer::play();
 }
 
@@ -35,11 +36,7 @@ void FFMpegMusicPlayer::pause() {
 }
 
 void FFMpegMusicPlayer::stop() {
-    if(this->stream) {
-        if(this->stream->stream)
-            this->stream->stream->close();
-        this->stream = nullptr;
-    }
+    this->destroyProcess();
     AbstractMusicPlayer::stop();
 }
 
@@ -79,19 +76,26 @@ std::shared_ptr<SampleSegment> FFMpegMusicPlayer::popNextSegment() {
     threads::MutexLock lock(this->fileLock);
     if(this->state() == PlayerState::STATE_STOPPED || !this->stream) {
         auto elm = this->nextSegment;
-        this->nextSegment.reset();
+        this->nextSegment = nullptr;
         return elm;
     }
     if(!this->nextSegment) readNextSegment();
     auto elm = this->nextSegment;
     readNextSegment();
+    if(this->end_reached && !elm && !this->nextSegment) {
+        this->fireEvent(MusicEvent::EVENT_END);
+        this->destroyProcess();
+    }
     return elm;
 }
 
 extern void trimString(std::string&);
 void FFMpegMusicPlayer::readNextSegment() {
     auto streamHandle = this->stream;
-    if(!streamHandle) return;
+    if(!streamHandle || this->end_reached) {
+        this->nextSegment = nullptr;
+        return;
+    }
 
     if(streamHandle->stream->err()) {
         string info;
@@ -130,13 +134,15 @@ void FFMpegMusicPlayer::readNextSegment() {
     auto buffer = static_cast<char *>(malloc(readLength));
 
     auto beg = system_clock::now();
-    while(streamHandle->stream->out().rdbuf()->in_avail()){
+    while(streamHandle->stream->out().rdbuf()->is_open() && streamHandle->stream->out().rdbuf()->in_avail() > 0){
         auto read = streamHandle->stream->out().readsome(&buffer[index], readLength - index);
         if(read > 0) {
             index += read;
             //log::log(log::debug, "Read " + to_string(readLength) + " - " + to_string(index));
             if(index >= readLength) break;
             continue;
+        } else {
+
         }
         if(streamHandle->stream->out().bad() || system_clock::now() - beg > milliseconds(20)) {
             this->stop(); //Empty!
@@ -147,7 +153,7 @@ void FFMpegMusicPlayer::readNextSegment() {
         usleep(1); //notink more
     }
 
-    while(streamHandle->stream->err().rdbuf()->in_avail()){
+    while(streamHandle->stream->err().rdbuf()->is_open() && streamHandle->stream->err().rdbuf()->in_avail() > 0){
         char xbuffer[30];
         streamHandle->stream->err().readsome(xbuffer, 30);
     }
@@ -155,4 +161,10 @@ void FFMpegMusicPlayer::readNextSegment() {
     streamHandle->sampleOffset += sampleCount;
     auto elm = shared_ptr<SampleSegment>(new SampleSegment{(int16_t*) buffer, sampleCount, channelCount});
     this->nextSegment = elm;
+
+    if(!streamHandle->stream->out().rdbuf()->is_open() || !streamHandle->stream->err().rdbuf()->is_open() || index == 0) {
+        this->end_reached = true;
+        log::log(log::debug, string() + "[FFMPEG] readNextSegment() failed (" + (index == 0 ? "read zero" : "ffmpeg stream closed") + ").");
+        return;
+    }
 }

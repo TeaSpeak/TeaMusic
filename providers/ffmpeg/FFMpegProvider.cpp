@@ -95,16 +95,12 @@ class FFMpegProvider : public music::manager::PlayerProvider {
             return future;
         }
 
-        bool acceptProtocol(const std::string& protocol) override {
-            for(const auto& entry : av_protocol)
-                if(entry == protocol) return true;
-            return false;
+        vector<string> availableFormats() override {
+            return av_fmt;
         }
 
-        bool acceptType(const std::string &type) override {
-            for(const auto& entry : av_fmt)
-                if(entry == type) return true;
-            return false;
+        vector<string> availableProtocols() override {
+            return av_protocol;
         }
 
         vector<string> av_protocol;
@@ -187,7 +183,6 @@ inline vector<string> avarible_fmt(std::string& error) {
             resVec.push_back(names.substr(oldIndex, index == std::string::npos ? index : index - oldIndex));
             index++;
         } while(index != 0);
-        resVec.push_back(line);
     }
 
     return resVec;

@@ -60,6 +60,7 @@ namespace music {
 
             private:
                 void spawnProcess();
+                void destroyProcess();
 
                 std::string file;
 
@@ -79,6 +80,7 @@ namespace music {
                 ssize_t readInfo(std::string&, const std::chrono::system_clock::time_point& = std::chrono::system_clock::time_point(), std::string delimiter = "");
 
                 bool live_stream = false;
+                bool end_reached = false;
         };
     }
 }

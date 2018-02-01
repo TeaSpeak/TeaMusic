@@ -80,7 +80,7 @@ threads::Future<std::shared_ptr<AudioInfo>> YTVManager::downloadAudio(std::strin
             return;
         }
 
-        auto stream = root["is_live"].asBool();
+        auto stream = !root["is_live"].isNull() && root["is_live"].asBool();
         log::log(log::debug, "Song title: " + root["fulltitle"].asString());
         log::log(log::debug, "Song id: " + root["id"].asString());
         log::log(log::debug, string() + "Live stream: " + (stream ? "yes" : "no"));
@@ -123,8 +123,8 @@ threads::Future<std::shared_ptr<AudioInfo>> YTVManager::downloadAudio(std::strin
             conMLoop:;
         }
         if(index == -1) {
-            future.executionFailed("Failed to get a valid audio stream with valid quality!");
-            return;
+            log::log(log::err, "[YT-DL] Failed to get a valid audio stream with valid quality!");
+            streamUrl = urls[0].second;
         }
         log::log(log::debug, string() + "Using audio quality " + audio_prefer_queue[index]);
         future.executionSucceed(std::make_shared<AudioInfo>(AudioInfo{root["fulltitle"].asString(), "unknown", streamUrl, stream}));
