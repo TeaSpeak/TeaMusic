@@ -10,7 +10,7 @@ using namespace music;
 
 static const char* yt_command = "youtube-dl -s --print-json %s"; //https://www.youtube.com/watch?v=MVyE18LL9OM
 
-YTVManager::YTVManager(sql::SqlData* handle) : sql(handle), _threads(4), root(fs::u8path("yt")) {}
+YTVManager::YTVManager(sql::SqlManager* handle) : sql(handle), _threads(4), root(fs::u8path("yt")) {}
 YTVManager::~YTVManager() {}
 
 static const char* audio_prefer_queue[] = {"opus", "vorbis", "mp4a.40.2", "none", nullptr};

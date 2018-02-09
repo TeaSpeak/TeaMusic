@@ -46,6 +46,7 @@ std::string FFMpegMusicPlayer::songTitle() { return this->stream ? this->stream-
 std::string FFMpegMusicPlayer::songDescription() { return this->stream ? this->stream->metadata["artist"] + "(" + this->stream->metadata["album"] + ")" : ""; }
 
 void FFMpegMusicPlayer::rewind(const PlayerUnits &duration) {
+    threads::MutexLock lock(this->streamLock);
     if(this->currentIndex() < duration) {
         this->seekOffset = PlayerUnits(0);
     } else {
@@ -55,6 +56,7 @@ void FFMpegMusicPlayer::rewind(const PlayerUnits &duration) {
     if(this->stream) this->spawnProcess();
 }
 void FFMpegMusicPlayer::forward(const PlayerUnits &duration) {
+    threads::MutexLock lock(this->streamLock);
     this->seekOffset = this->currentIndex() + duration;
     if(this->seekOffset > this->length()) {
         this->stop();
@@ -68,12 +70,12 @@ bool FFMpegMusicPlayer::finished() { return this->stream == nullptr; }
 
 
 std::shared_ptr<SampleSegment> FFMpegMusicPlayer::peekNextSegment() {
-    threads::MutexLock lock(this->fileLock);
+    threads::MutexLock lock(this->streamLock);
     return this->nextSegment;
 }
 
 std::shared_ptr<SampleSegment> FFMpegMusicPlayer::popNextSegment() {
-    threads::MutexLock lock(this->fileLock);
+    threads::MutexLock lock(this->streamLock);
     if(this->state() == PlayerState::STATE_STOPPED || !this->stream) {
         auto elm = this->nextSegment;
         this->nextSegment = nullptr;
@@ -91,6 +93,7 @@ std::shared_ptr<SampleSegment> FFMpegMusicPlayer::popNextSegment() {
 
 extern void trimString(std::string&);
 void FFMpegMusicPlayer::readNextSegment() {
+    threads::MutexLock lock(this->streamLock);
     auto streamHandle = this->stream;
     if(!streamHandle || this->end_reached) {
         this->nextSegment = nullptr;
@@ -163,8 +166,12 @@ void FFMpegMusicPlayer::readNextSegment() {
     this->nextSegment = elm;
 
     if(!streamHandle->stream->out().rdbuf()->is_open() || !streamHandle->stream->err().rdbuf()->is_open() || index == 0) {
-        this->end_reached = true;
-        log::log(log::debug, string() + "[FFMPEG] readNextSegment() failed (" + (index == 0 ? "read zero" : "ffmpeg stream closed") + ").");
+        failCount++;
+        if(failCount > 5) {
+            this->end_reached = true;
+            log::log(log::debug, string() + "[FFMPEG] readNextSegment() failed (" + (index == 0 ? "read zero" : "ffmpeg stream closed") + ").");
+        }
         return;
     }
+    failCount = 0;
 }

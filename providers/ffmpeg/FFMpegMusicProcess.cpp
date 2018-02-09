@@ -93,7 +93,7 @@ inline std::string buildTime(PlayerUnits units){
     auto milli = duration_cast<milliseconds>(units);
 
     char buffer[11 + 1];
-    sprintf(buffer, "%02d:%02d:%02d.%02d", hour, minute, second, milli / 10);
+    sprintf(buffer, "%02d:%02d:%02d.%02d", (int) hour.count(), (int) minute.count(), (int) second.count(), (int) milli.count() / 10);
     return string(buffer);
 }
 
@@ -124,6 +124,7 @@ inline std::string buildTime(PlayerUnits units){
   */
 
 void FFMpegMusicPlayer::destroyProcess() {
+    threads::MutexLock lock(this->streamLock);
     if(!this->stream) return;
 
     this->end_reached = true;
@@ -133,6 +134,7 @@ void FFMpegMusicPlayer::destroyProcess() {
 }
 
 void FFMpegMusicPlayer::spawnProcess() {
+    threads::MutexLock lock(this->streamLock);
     this->destroyProcess();
     this->nextSegment = nullptr;
     this->end_reached = false;
@@ -179,6 +181,8 @@ void FFMpegMusicPlayer::spawnProcess() {
 }
 
 ssize_t FFMpegMusicPlayer::readInfo(std::string& result, const std::chrono::system_clock::time_point& timeout, std::string delimiter) {
+    threads::MutexLock lock(this->streamLock);
+    auto stream = this->stream;
     ssize_t _read = 0;
     result = "";
     if(!this->errBuff.empty()) {
@@ -197,8 +201,8 @@ ssize_t FFMpegMusicPlayer::readInfo(std::string& result, const std::chrono::syst
     size_t bufferLength = 128;
     char buffer[bufferLength];
     do {
-        while(this->stream->stream->err().rdbuf()->in_avail() > 0){
-            ssize_t read = this->stream->stream->err().readsome(buffer, bufferLength);
+        while(/*stream->stream->err().rdbuf()->in_avail() > 0*/ true){
+            ssize_t read = stream->stream->err().readsome(buffer, bufferLength);
             if(read <= 0) break;
 
             string readStr = string(buffer, read);
@@ -243,7 +247,7 @@ ssize_t FFMpegMusicPlayer::readInfo(std::string& result, const std::chrono::syst
             return _read;
         }
         usleep(1000);
-    } while(!this->stream->stream->rdbuf()->exited());
+    } while(!stream->stream->rdbuf()->exited());
 
     if(!delimiter.empty()) { //eof and not found delimiter
         this->errBuff = result;

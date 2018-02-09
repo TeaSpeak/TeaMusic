@@ -16,7 +16,7 @@ namespace yt {
 
     class YTVManager {
         public:
-            explicit YTVManager(sql::SqlData*);
+            explicit YTVManager(sql::SqlManager*);
             ~YTVManager();
 
             bool setup(){ return true; }
@@ -24,8 +24,8 @@ namespace yt {
             threads::Future<std::shared_ptr<AudioInfo>> downloadAudio(std::string);
             threads::Future<std::shared_ptr<music::MusicPlayer>> playAudio(const std::string&);
         private:
-            fs::path root;
-            sql::SqlData* sql;
-            threads::ThreadPool _threads;
+            fs::path root{};
+            sql::SqlManager* sql = nullptr;
+            threads::ThreadPool _threads{4};
     };
 }

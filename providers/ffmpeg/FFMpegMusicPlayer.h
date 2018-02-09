@@ -64,10 +64,10 @@ namespace music {
 
                 std::string file;
 
-                threads::Mutex fileLock;
                 std::shared_ptr<SampleSegment> nextSegment = nullptr;
 
                 std::string fname;
+                threads::Mutex streamLock;
                 std::shared_ptr<FFMpegStream> stream;
                 PlayerUnits seekOffset = PlayerUnits(0);
 
@@ -81,6 +81,8 @@ namespace music {
 
                 bool live_stream = false;
                 bool end_reached = false;
+
+                size_t failCount = 0;
         };
     }
 }
