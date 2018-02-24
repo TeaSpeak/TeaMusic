@@ -67,11 +67,17 @@ threads::Future<std::shared_ptr<AudioInfo>> YTVManager::downloadAudio(std::strin
             }
         }
         if(err.find('\n') == err.length() - 1) err = err.substr(0, err.length() - 1);
+        bool hasError = err.find("ERROR") != std::string::npos;
         if(!err.empty()) {
-            music::log::log(music::log::err, "[YT-DL] Invalid execution of command " + command);
-            music::log::log(music::log::err, "[YT-DL] Message: " + err);
+            if(hasError) {
+                music::log::log(music::log::err, "[YT-DL] Invalid execution of command " + command);
+                music::log::log(music::log::err, "[YT-DL] Message: " + err);
+            } else {
+                music::log::log(music::log::debug, "[YT-DL] Got some messages from error stream from command " + command);
+                music::log::log(music::log::debug, "[YT-DL] Message: " + err);
+            }
         }
-        if(!err.empty() || (proc.fail() && json.empty())) {
+        if(hasError || (proc.fail() && json.empty())) {
             future.executionFailed(err);
             return;
         }
