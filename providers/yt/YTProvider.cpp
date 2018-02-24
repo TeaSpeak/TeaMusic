@@ -12,6 +12,9 @@ class YTProvider : public PlayerProvider {
             this->providerName = "YouTube";
             this->providerDescription = "Playback yt videos";
         }
+
+        virtual ~YTProvider() = default;
+
         threads::Future<std::shared_ptr<music::MusicPlayer>> createPlayer(const std::string &string) override {
             return manager->playAudio(string);
         }

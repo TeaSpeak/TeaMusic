@@ -24,8 +24,8 @@ namespace yt {
             threads::Future<std::shared_ptr<AudioInfo>> downloadAudio(std::string);
             threads::Future<std::shared_ptr<music::MusicPlayer>> playAudio(const std::string&);
         private:
+            threads::ThreadPool _threads{4, "YT Download"};
             fs::path root{};
             sql::SqlManager* sql = nullptr;
-            threads::ThreadPool _threads{4};
     };
 }

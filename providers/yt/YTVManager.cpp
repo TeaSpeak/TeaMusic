@@ -10,10 +10,19 @@ using namespace music;
 
 static const char* yt_command = "youtube-dl -s --print-json %s"; //https://www.youtube.com/watch?v=MVyE18LL9OM
 
-YTVManager::YTVManager(sql::SqlManager* handle) : sql(handle), _threads(4), root(fs::u8path("yt")) {}
+YTVManager::YTVManager(sql::SqlManager* handle) {
+    this->sql = handle;
+    this->root = fs::u8path("yt");
+}
 YTVManager::~YTVManager() {}
 
-static const char* audio_prefer_queue[] = {"opus", "vorbis", "mp4a.40.2", "none", nullptr};
+static const char* audio_prefer_codec_queue[] = {"opus", "vorbis", "mp4a.40.2", "none", nullptr};
+
+struct FMTInfo {
+    string codec;
+    int bitrate;
+    string url;
+};
 threads::Future<std::shared_ptr<AudioInfo>> YTVManager::downloadAudio(std::string video) {
     threads::Future<std::shared_ptr<AudioInfo>> future;
 
@@ -89,15 +98,17 @@ threads::Future<std::shared_ptr<AudioInfo>> YTVManager::downloadAudio(std::strin
         auto requests = root["formats"];
         log::log(log::debug, "Request count: " + to_string(requests.size()));
 
-        vector<pair<string, string>> urls;
+        vector<FMTInfo> urls;
         for (auto request : requests) {
             auto fmt = request["format"].asString();
+            int rate = request["abr"].asInt();
+
             if(stream) {
                 if(fmt.find("HLS") == std::string::npos) continue;
             } else {
                 if(fmt.find("audio only") == std::string::npos) continue;
             }
-            urls.emplace_back(request["acodec"].asString(), request["url"].asString());
+            urls.push_back(FMTInfo{request["acodec"].asString(), rate, request["url"].asString()});
         }
         if(urls.empty()) {
             future.executionFailed("Failed to get a valid audio stream");
@@ -105,28 +116,36 @@ threads::Future<std::shared_ptr<AudioInfo>> YTVManager::downloadAudio(std::strin
         }
 
         int index = -1;
+        int abr = -1; //Audio bitrate
         string streamUrl;
         for(const auto& entry : urls) {
             int i = 0;
-            while(audio_prefer_queue[i]) {
-                if(entry.first == audio_prefer_queue[i]) {
-                    if(index == -1 || index > i) {
-                        index = i;
-                        streamUrl = entry.second;
-                    }
-                    goto conMLoop;
-                }
+            while(audio_prefer_codec_queue[i]) {
+                if(entry.codec == audio_prefer_codec_queue[i])
+                    break;
                 i++;
             }
-            log::log(log::err, "[YT-DL] Could not resolve yt audio quality '" + entry.first + "'");
+            if(i == sizeof(audio_prefer_codec_queue) / sizeof(*audio_prefer_codec_queue)) {
+                log::log(log::err, "[YT-DL] Could not resolve yt audio quality '" + entry.codec + "'");
+                i = -2;
+            }
 
-            conMLoop:;
+            bool use = false;
+            use |= index == -1 || abr == -1;
+            if(!use) use |= i < index && index != -2;
+            if(!use) use |= abr < entry.bitrate && entry.bitrate != 0;
+            if(use) {
+                index = i;
+                abr = entry.bitrate;
+                streamUrl = entry.url;
+
+            }
         }
-        if(index == -1) {
+        if(streamUrl.empty()) {
             log::log(log::err, "[YT-DL] Failed to get a valid audio stream with valid quality!");
-            streamUrl = urls[0].second;
+            streamUrl = urls[0].url;
         }
-        log::log(log::debug, string() + "Using audio quality " + audio_prefer_queue[index]);
+        log::log(log::debug, string() + "Using audio quality " + audio_prefer_codec_queue[index]);
         future.executionSucceed(std::make_shared<AudioInfo>(AudioInfo{root["fulltitle"].asString(), "unknown", streamUrl, stream}));
     });
     return future;
