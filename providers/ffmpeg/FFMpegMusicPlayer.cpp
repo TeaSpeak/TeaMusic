@@ -27,7 +27,9 @@ bool FFMpegMusicPlayer::initialize() {
 }
 
 void FFMpegMusicPlayer::play() {
+    if(!this->stream) this->spawnProcess();
     this->end_reached = false;
+    this->read_success = system_clock::now();
     AbstractMusicPlayer::play();
 }
 
