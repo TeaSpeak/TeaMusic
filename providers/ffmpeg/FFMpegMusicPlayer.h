@@ -71,7 +71,7 @@ namespace music {
                 std::shared_ptr<FFMpegStream> stream;
                 PlayerUnits seekOffset = PlayerUnits(0);
 
-                void readNextSegment();
+                void readNextSegment(const std::chrono::nanoseconds&);
 
                 std::string errBuff;
 #ifdef DEBUG_FFMPEG
@@ -82,7 +82,7 @@ namespace music {
                 bool live_stream = false;
                 bool end_reached = false;
 
-                size_t failCount = 0;
+                std::chrono::system_clock::time_point read_success;
         };
     }
 }

@@ -131,6 +131,10 @@ void FFMpegMusicPlayer::destroyProcess() {
     if(this->stream->stream) this->stream->stream;
     this->stream = nullptr;
     this->end_reached = false;
+
+    this->errBuff = "";
+    this->errHistory = "";
+    this->read_success = system_clock::time_point();
 }
 
 void FFMpegMusicPlayer::spawnProcess() {

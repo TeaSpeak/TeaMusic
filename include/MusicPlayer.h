@@ -43,9 +43,11 @@ namespace music {
          * char length : channels * segmentLength * sizeof(s16le)
          * Encoding    : s16le
          */
-        int16_t* segments;
-        size_t segmentLength;
-        int channels;
+        int16_t* segments = nullptr;
+        size_t segmentLength = 0;
+        size_t channels = 0;
+
+        SampleSegment() {}
 
         ~SampleSegment(){
             if(segments) free(segments);

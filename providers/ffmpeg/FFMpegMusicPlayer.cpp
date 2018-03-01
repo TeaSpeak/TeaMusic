@@ -76,15 +76,17 @@ std::shared_ptr<SampleSegment> FFMpegMusicPlayer::peekNextSegment() {
 
 std::shared_ptr<SampleSegment> FFMpegMusicPlayer::popNextSegment() {
     threads::MutexLock lock(this->streamLock);
+
     if(this->state() == PlayerState::STATE_STOPPED || !this->stream) {
         auto elm = this->nextSegment;
         this->nextSegment = nullptr;
         return elm;
     }
-    if(!this->nextSegment) readNextSegment();
+    if(!this->nextSegment) readNextSegment(milliseconds(1));
     auto elm = this->nextSegment;
-    readNextSegment();
+    readNextSegment(milliseconds(1));
     if(this->end_reached && !elm && !this->nextSegment) {
+        log::log(log::trace, "[FFMPEG] Fire end!");
         this->fireEvent(MusicEvent::EVENT_END);
         this->destroyProcess();
     }
@@ -92,7 +94,7 @@ std::shared_ptr<SampleSegment> FFMpegMusicPlayer::popNextSegment() {
 }
 
 extern void trimString(std::string&);
-void FFMpegMusicPlayer::readNextSegment() {
+void FFMpegMusicPlayer::readNextSegment(const std::chrono::nanoseconds& max_time) {
     threads::MutexLock lock(this->streamLock);
     auto streamHandle = this->stream;
     if(!streamHandle || this->end_reached) {
@@ -118,7 +120,6 @@ void FFMpegMusicPlayer::readNextSegment() {
             return;
         }
 
-
         if(this->errBuff.size() > 64) { //"size=   ?XkB time=XX:XX:XX.XX bitrate=?X.X" -> 42 + n (22) bytes for digits lengths
             this->applayError(this->errBuff);
             this->errBuff.empty();
@@ -137,41 +138,53 @@ void FFMpegMusicPlayer::readNextSegment() {
     auto buffer = static_cast<char *>(malloc(readLength));
 
     auto beg = system_clock::now();
-    while(streamHandle->stream->out().rdbuf()->is_open() && streamHandle->stream->out().rdbuf()->in_avail() > 0){
-        auto read = streamHandle->stream->out().readsome(&buffer[index], readLength - index);
-        if(read > 0) {
-            index += read;
-            //log::log(log::debug, "Read " + to_string(readLength) + " - " + to_string(index));
-            if(index >= readLength) break;
-            continue;
-        } else {
-
+    while(streamHandle->stream->out().rdbuf()->is_open()){
+        if(streamHandle->stream->out().rdbuf()->in_avail() > 0) {
+            auto read = streamHandle->stream->out().readsome(&buffer[index], readLength - index);
+            if(read > 0) {
+                index += read;
+                //log::log(log::debug, "Read " + to_string(readLength) + " - " + to_string(index));
+                if(index >= readLength) break;
+                continue;
+            }
         }
-        if(streamHandle->stream->out().bad() || system_clock::now() - beg > milliseconds(20)) {
+
+        if(streamHandle->stream->out().bad()) {
             this->stop(); //Empty!
             this->fireEvent(MusicEvent::EVENT_END);
             log::log(log::debug, "[FFMPEG] readNextSegment() failed.");
             return;
         }
-        usleep(1); //notink more
+
+        if(beg + max_time < system_clock::now()) {
+            log::log(log::trace, "[FFMPEG] readNextSegment() -> failed (read loop need more time than allowed)");
+            break;
+        }
+        usleep(250);
     }
 
-    while(streamHandle->stream->err().rdbuf()->is_open() && streamHandle->stream->err().rdbuf()->in_avail() > 0){
-        char xbuffer[30];
-        streamHandle->stream->err().readsome(xbuffer, 30);
+    if(index != readLength && index != 0) {
+        log::log(log::debug, "[FFMPEG][WARN] readNextSegment() -> No full read! (" + to_string(index) + "/" + to_string(readLength) + ")");
+        sampleCount = index / streamHandle->channels / sizeof(uint16_t);
     }
 
-    streamHandle->sampleOffset += sampleCount;
-    auto elm = shared_ptr<SampleSegment>(new SampleSegment{(int16_t*) buffer, sampleCount, channelCount});
-    this->nextSegment = elm;
+    if(sampleCount > 0 && index > 0){
+        streamHandle->sampleOffset += sampleCount;
+        auto elm = std::make_shared<SampleSegment>();
+        elm->channels = streamHandle->channels;
+        elm->segmentLength = sampleCount;
+        elm->segments = reinterpret_cast<int16_t *>(buffer);
+        this->nextSegment = elm;
+    }
 
     if(!streamHandle->stream->out().rdbuf()->is_open() || !streamHandle->stream->err().rdbuf()->is_open() || index == 0) {
-        failCount++;
-        if(failCount > 5) {
+        if(read_success.time_since_epoch().count() == 0) read_success = system_clock::now();
+
+        if(read_success + seconds(1) < system_clock::now()) {
             this->end_reached = true;
             log::log(log::debug, string() + "[FFMPEG] readNextSegment() failed (" + (index == 0 ? "read zero" : "ffmpeg stream closed") + ").");
         }
         return;
     }
-    failCount = 0;
+    read_success = system_clock::now();
 }

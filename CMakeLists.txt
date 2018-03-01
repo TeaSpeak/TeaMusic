@@ -50,6 +50,7 @@ endif ()
 if(BUILD_PROVIDER_FFMPEG)
 	message("Building FFMpeg provider")
 	add_library(ProviderFFMpeg SHARED ${HEADERS} providers/ffmpeg/FFMpegProvider.cpp providers/ffmpeg/FFMpegMusicPlayer.cpp providers/ffmpeg/FFMpegMusicProcess.cpp)
+	target_link_libraries(ProviderFFMpeg ThreadPool)
 	#The FFMpeg provider requires this libraries:
 	#- TeaMusic
 	#- ThreadPoolStatic
