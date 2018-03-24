@@ -43,15 +43,23 @@ namespace music {
          * char length : channels * segmentLength * sizeof(s16le)
          * Encoding    : s16le
          */
-        int16_t* segments = nullptr;
+        mutable int16_t* segments = nullptr;
+	    const size_t maxSegmentLength = 0;
+	    const size_t channels = 0;
         size_t segmentLength = 0;
-        size_t channels = 0;
 
-        SampleSegment() {}
+        bool full = false;
 
-        ~SampleSegment(){
-            if(segments) free(segments);
+	    SampleSegment(const int16_t *segments, const size_t maxSegmentLength, const size_t channels) : segments(segments), maxSegmentLength(maxSegmentLength), channels(channels) {}
+
+	    ~SampleSegment(){
+            if(segments) free((void *) segments);
         }
+
+	    inline static std::shared_ptr<SampleSegment> allocate(size_t maxSamples, size_t channels) {
+		    auto buffer = (int16_t*) malloc(maxSamples * channels * sizeof(int16_t));
+			return std::make_shared<SampleSegment>(buffer, maxSamples, channels);
+	    }
     };
 
     enum PlayerState {
@@ -74,7 +82,7 @@ namespace music {
     typedef std::chrono::milliseconds PlayerUnits;
     class MusicPlayer {
         public:
-            virtual bool initialize() = 0;
+            virtual bool initialize(size_t channelCount) = 0;
 
             virtual PlayerState state() = 0;
             virtual void play() = 0;
@@ -88,10 +96,12 @@ namespace music {
 
             virtual PlayerUnits length() = 0;
             virtual PlayerUnits currentIndex() = 0;
+		    virtual PlayerUnits bufferedUntil() = 0;
 
             virtual size_t sampleRate() = 0; //Returns the samples per second
             virtual size_t preferredSampleCount() = 0; //Returns the samples per packet
             virtual void preferredSampleCount(size_t) = 0; //Change the sample count
+		    virtual size_t channelCount() = 0;
 
             virtual std::shared_ptr<SampleSegment> popNextSegment() = 0;
             virtual std::shared_ptr<SampleSegment> peekNextSegment() = 0;
@@ -110,9 +120,10 @@ namespace music {
     class AbstractMusicPlayer : public MusicPlayer {
         public:
             AbstractMusicPlayer() = default;
-            ~AbstractMusicPlayer() { }
 
-            PlayerState state() override {
+		    virtual ~AbstractMusicPlayer() = default;
+
+		    PlayerState state() override {
                 return playerState;
             }
 
@@ -149,12 +160,20 @@ namespace music {
                 this->_preferredSampleCount = size;
             }
 
-            bool seek_supported() override { return true; }
+		    bool initialize(size_t channelCount) override {
+			    this->_channelCount = channelCount;
+			    return true;
+		    }
+
+		    size_t channelCount() override {
+			    return this->_channelCount;
+		    }
+
+		    bool seek_supported() override { return true; }
 
             void registerEventHandler(const std::string&, const std::function<void(MusicEvent)>& function) override;
 
             void unregisterEventHandler(const std::string&) override;
-
         protected:
             void applayError(const std::string& _err) {
                 this->_error = _err;
@@ -165,6 +184,7 @@ namespace music {
             PlayerState playerState = PlayerState::STATE_STOPPED;
             std::string _error = "";
             size_t _preferredSampleCount = 0;
+		    size_t _channelCount = 0;
 
             threads::Mutex eventLock;
             std::deque<std::pair<std::string, std::function<void(MusicEvent)>>> eventHandlers;

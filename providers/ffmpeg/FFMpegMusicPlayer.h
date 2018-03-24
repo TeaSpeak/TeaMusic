@@ -2,11 +2,19 @@
 #include <ThreadPool/Mutex.h>
 #include <memory>
 #include <map>
+#include <event.h>
 
 #define DEBUG_FFMPEG
 namespace music {
     namespace player {
+	    enum IOStreamType {
+		    IO_ERROR,
+		    IO_OUTPUT
+	    };
         struct FFMpegStream {
+		        typedef std::function<void(const std::string&)> ReadCallback;
+		        typedef std::function<void(IOStreamType, int, int, const std::string&)> ErrorCallback;
+		        typedef std::function<void()> EndCallback;
             public:
 
 #ifdef REDI_PSTREAM_H_SEEN //So you could include this header event without the extra libs
@@ -14,28 +22,60 @@ namespace music {
 #else
                 typedef void* pstream_t;
 #endif
-                FFMpegStream(pstream_t* stream) : stream(stream) {}
-                ~FFMpegStream() {
-                    delete stream;
-                    this->stream = nullptr;
-                }
+
+			    explicit FFMpegStream(pstream_t* stream) : stream(stream) {}
+                ~FFMpegStream();
+
+			    bool initializeEvents();
 
                 pstream_t* stream = nullptr;
                 size_t channels = 0;
                 std::map<std::string, std::string> metadata;
 
                 PlayerUnits duration = PlayerUnits(0);
-                PlayerUnits currentIndex = PlayerUnits(0);
-                size_t sampleOffset = 0;
+
+			    //IO
+			    threads::Mutex eventLock;
+			    event_base* eventBase = nullptr;
+			    event* outEvent = nullptr;
+			    event* errEvent = nullptr;
+			    bool buffering = false;
+
+			    ReadCallback callback_read_error = [](const std::string&) {};
+			    ReadCallback callback_read_output = [](const std::string&) {};
+			    ErrorCallback callback_error = [](IOStreamType, int, int, const std::string&) {};
+			    EndCallback callback_end = [](){};
+
+			    void enableBuffering() {
+				    threads::MutexLock lock(this->eventLock);
+				    if(buffering) return;
+				    buffering = true;
+				    event_add(outEvent, nullptr);
+				    event_add(errEvent, nullptr);
+			    }
+
+			    void disableBuffering() {
+				    threads::MutexLock lock(this->eventLock);
+				    if(!buffering) return;
+				    buffering = false;
+				    event_del(outEvent);
+				    event_del(errEvent);
+			    }
+
+		    private:
+			    void callback_read(int,bool);
+
+			    static void callbackfn_read_error(int,short,void*);
+			    static void callbackfn_read_output(int,short,void*);
         };
 
         class FFMpegMusicPlayer : public AbstractMusicPlayer {
             public:
-                FFMpegMusicPlayer(const std::string&);
+                explicit FFMpegMusicPlayer(const std::string&);
                 FFMpegMusicPlayer(const std::string&, bool);
-                ~FFMpegMusicPlayer();
+                ~FFMpegMusicPlayer() override;
 
-                bool initialize() override;
+                bool initialize(size_t) override;
 
                 void pause() override;
 
@@ -49,6 +89,8 @@ namespace music {
 
                 PlayerUnits length() override;
                 PlayerUnits currentIndex() override;
+		        PlayerUnits bufferedUntil() override;
+		        size_t bufferedSampleCount();
 
                 size_t sampleRate() override;
 
@@ -64,14 +106,22 @@ namespace music {
 
                 std::string file;
 
-                std::shared_ptr<SampleSegment> nextSegment = nullptr;
+		        threads::Mutex sampleLock;
+		        std::deque<std::shared_ptr<SampleSegment>> bufferedSamples{};
+		        char byteBuffer[0xF]; //Buffer to store unuseable read overhead (max. 8 full samples)
+		        size_t byteBufferIndex = 0;
+                //std::shared_ptr<SampleSegment> nextSegment = nullptr;
 
                 std::string fname;
                 threads::Mutex streamLock;
                 std::shared_ptr<FFMpegStream> stream;
+		        void callback_read_output(const std::string &);
+		        void callback_read_err(const std::string&);
+		        void callback_end();
+		        size_t sampleOffset = 0;
                 PlayerUnits seekOffset = PlayerUnits(0);
 
-                void readNextSegment(const std::chrono::nanoseconds&);
+                //void readNextSegment(const std::chrono::nanoseconds&);
 
                 std::string errBuff;
 #ifdef DEBUG_FFMPEG
@@ -82,7 +132,7 @@ namespace music {
                 bool live_stream = false;
                 bool end_reached = false;
 
-                std::chrono::system_clock::time_point read_success;
+			    void updateBufferState();
         };
     }
 }

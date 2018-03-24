@@ -79,33 +79,12 @@ inline pair<string, string> executeCommand(const string& cmd){
     return {in, err};
 };
 
-class FFMpegProvider : public music::manager::PlayerProvider {
-    public:
-        FFMpegProvider() {
-            this->providerName = "FFMpeg";
-            this->providerDescription = "FFMpeg playback support";
-        }
-
-        virtual ~FFMpegProvider() = default;
-
-        threads::Future<std::shared_ptr<music::MusicPlayer>> createPlayer(const std::string &string) override {
-            auto player = std::make_shared<music::player::FFMpegMusicPlayer>(string);
-            auto future = threads::Future<std::shared_ptr<music::MusicPlayer>>();
-            future.executionSucceed(std::dynamic_pointer_cast<music::MusicPlayer>(player));
-            return future;
-        }
-
-        vector<string> availableFormats() override {
-            return av_fmt;
-        }
-
-        vector<string> availableProtocols() override {
-            return av_protocol;
-        }
-
-        vector<string> av_protocol;
-        vector<string> av_fmt;
-};
+threads::Future<std::shared_ptr<music::MusicPlayer>> FFMpegProvider::createPlayer(const std::string &string) {
+    auto player = std::make_shared<music::player::FFMpegMusicPlayer>(string);
+    auto future = threads::Future<std::shared_ptr<music::MusicPlayer>>();
+    future.executionSucceed(std::dynamic_pointer_cast<music::MusicPlayer>(player));
+    return future;
+}
 
 inline string part(std::string& str, const std::string& deleimiter, bool invert_search = false) {
     auto index = invert_search ? str.find_first_not_of(deleimiter) : str.find(deleimiter);
@@ -121,7 +100,7 @@ inline string part(std::string& str, const std::string& deleimiter, bool invert_
 }
 
 extern void trimString(std::string &str);
-inline vector<string> protocols(std::string& error) {
+inline vector<string> available_protocols(std::string &error) {
     error = "";
     auto vres = executeCommand(ffmpeg_command + " -protocols");
 
@@ -147,7 +126,7 @@ inline vector<string> protocols(std::string& error) {
     return resVec;
 }
 
-inline vector<string> avarible_fmt(std::string& error) {
+inline vector<string> available_fmt(std::string &error) {
     error = "";
     auto vres = executeCommand(ffmpeg_command + " -formats");
 
@@ -209,14 +188,14 @@ std::shared_ptr<music::manager::PlayerProvider> create_provider() {
 
     auto provider = std::make_shared<FFMpegProvider>();
 
-    auto prots = protocols(error);
+    auto prots = available_protocols(error);
     if(!error.empty()) {
         log::log(log::err, "[FFMPEG] Could not parse available protocols");
         log::log(log::err, "[FFMPEG] " + error);
     }
     provider->av_protocol = prots;
 
-    auto fmts = avarible_fmt(error);
+    auto fmts = available_fmt(error);
     if(!error.empty()) {
         log::log(log::err, "[FFMPEG] Could not parse available formats");
         log::log(log::err, "[FFMPEG] " + error);
@@ -224,4 +203,24 @@ std::shared_ptr<music::manager::PlayerProvider> create_provider() {
     provider->av_fmt = fmts;
 
     return provider;
+}
+
+FFMpegProvider* FFMpegProvider::instance = nullptr;
+FFMpegProvider::FFMpegProvider() {
+	FFMpegProvider::instance = this;
+	this->providerName = "FFMpeg";
+	this->providerDescription = "FFMpeg playback support";
+
+	this->readerBase = event_base_new();
+	this->readerDispatch = new threads::Thread(THREAD_EXECUTE_LATER | THREAD_SAVE_OPERATIONS, [&](){
+		while(this->readerBase) {
+			event_base_dispatch(this->readerBase);
+			threads::self::sleep_for(milliseconds(10)); //Dont have somethink to do
+		}
+	});
+	this->readerDispatch->name("FFMpeg IO").execute();
+}
+
+FFMpegProvider::~FFMpegProvider() {
+	FFMpegProvider::instance = nullptr;
 }

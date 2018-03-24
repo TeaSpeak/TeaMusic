@@ -9,8 +9,8 @@ namespace music {
     namespace player {
         class YoutubeMusicPlayer : public FFMpegMusicPlayer {
             public:
-                YoutubeMusicPlayer(std::shared_ptr<yt::AudioInfo>);
-                ~YoutubeMusicPlayer();
+                explicit YoutubeMusicPlayer(std::shared_ptr<yt::AudioInfo>);
+                ~YoutubeMusicPlayer() override;
 
                 std::string songTitle() override;
 

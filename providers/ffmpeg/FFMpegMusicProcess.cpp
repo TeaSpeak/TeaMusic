@@ -2,6 +2,7 @@
 #include <sstream>
 #include <misc/pstream.h>
 #include "FFMpegMusicPlayer.h"
+#include "FFMpegProvider.h"
 
 using namespace std;
 using namespace std::chrono;
@@ -9,7 +10,8 @@ using namespace music;
 using namespace music::player;
 
 extern std::string ffmpeg_command;
-const static char* ffmpeg_command_args = "-hide_banner -ss %1$s -stats -i \"%2$s\" -vn -bufsize 512k -ac 2 -ar 48000 -f s16le -acodec pcm_s16le pipe:1"; //-vn = disable video | -bufsize 512k buffer audio
+const static char* ffmpeg_command_args = "-hide_banner -ss %1$s -stats -i \"%2$s\" -vn -bufsize 512k -ac %3$d -ar 48000 -f s16le -acodec pcm_s16le pipe:1"; //-vn = disable video | -bufsize 512k buffer audio
+//TODO Channel count variable
 
 std::string replaceString(std::string subject, const std::string& search, const std::string& replace) {
     size_t pos = 0;
@@ -134,23 +136,22 @@ void FFMpegMusicPlayer::destroyProcess() {
 
     this->errBuff = "";
     this->errHistory = "";
-    this->read_success = system_clock::time_point();
+	this->bufferedSamples.clear();
 }
 
 void FFMpegMusicPlayer::spawnProcess() {
     threads::MutexLock lock(this->streamLock);
     this->destroyProcess();
-    this->nextSegment = nullptr;
+	this->bufferedSamples.clear();
     this->end_reached = false;
 
     char commandBuffer[1024];
-    sprintf(commandBuffer, ffmpeg_command_args, buildTime(this->seekOffset).c_str(), this->fname.c_str());
+    sprintf(commandBuffer, ffmpeg_command_args, buildTime(this->seekOffset).c_str(), this->fname.c_str(), this->_channelCount);
     auto cmd = ffmpeg_command + " " + string(commandBuffer);
     log::log(log::debug, "[FFMpeg] Executing command: " + cmd);
     this->stream = std::make_shared<FFMpegStream>(new redi::pstream(cmd, redi::pstreams::pstdin | redi::pstreams::pstderr | redi::pstreams::pstdout));
     auto self = this->stream;
-    self->channels = 2; //proc spawned with two channels
-    self->sampleOffset = duration_cast<milliseconds>(this->seekOffset).count() * this->sampleRate() / 1000;
+    self->channels = this->_channelCount;
     log::log(log::debug, "[FFMpeg] Awaiting info");
 
     string info;
@@ -180,8 +181,15 @@ void FFMpegMusicPlayer::spawnProcess() {
     read = this->readInfo(info, system_clock::now() + seconds(5), "Press [q] to stop, [?] for help\n");
     PERR("Could not read junk data");
 
-
     log::log(log::trace, "Parsed video/lstream info for \"" + this->fname + "\". Full string:\n" + this->errHistory);
+
+	this->stream->eventBase = FFMpegProvider::instance->readerBase; //TODO pool?
+	this->stream->initializeEvents();
+
+	this->stream->callback_read_error = std::bind(&FFMpegMusicPlayer::callback_read_err, this, placeholders::_1);
+	this->stream->callback_read_output = std::bind(&FFMpegMusicPlayer::callback_read_output, this, placeholders::_1);
+	this->stream->callback_end = std::bind(&FFMpegMusicPlayer::callback_end, this);
+	this->stream->enableBuffering(); //TODO buffer strategy?
 }
 
 ssize_t FFMpegMusicPlayer::readInfo(std::string& result, const std::chrono::system_clock::time_point& timeout, std::string delimiter) {
@@ -259,4 +267,70 @@ ssize_t FFMpegMusicPlayer::readInfo(std::string& result, const std::chrono::syst
         return 0;
     }
     return _read;
+}
+inline bool enableNonBlock(int fd){
+	int flags = fcntl(fd, F_GETFL, 0);
+	fcntl(fd, F_SETFL, flags | O_NONBLOCK);
+	return true;
+}
+
+FFMpegStream::~FFMpegStream() {
+	if(this->stream) this->stream->close();
+	delete stream;
+	this->stream = nullptr;
+
+	if(outEvent) {
+		event_del(outEvent);
+		event_free(outEvent);
+	}
+	if(errEvent) {
+		event_del(errEvent);
+		event_free(errEvent);
+	}
+}
+
+bool FFMpegStream::initializeEvents() {
+	if(!this->eventBase) {
+		log::log(log::critical, "Could not initialise FFMpeg Stream without an event base!");
+		return false;
+	}
+
+	auto fd_err = this->stream->rdbuf()->rpipe(redi::basic_pstreambuf<char>::buf_read_src::rsrc_err);
+	auto fd_out = this->stream->rdbuf()->rpipe(redi::basic_pstreambuf<char>::buf_read_src::rsrc_out);
+	enableNonBlock(fd_err);
+	enableNonBlock(fd_out);
+	log::log(log::debug, "Got ffmpeg file descriptors for err " + to_string(fd_err) + " and out " + to_string(fd_out));
+	if(fd_err > 0)
+		this->errEvent = event_new(this->eventBase, fd_err, EV_READ | EV_PERSIST, FFMpegStream::callbackfn_read_error, this);
+	if(fd_out > 0)
+		this->outEvent = event_new(this->eventBase, fd_out, EV_READ | EV_PERSIST, FFMpegStream::callbackfn_read_output, this);
+	return true;
+}
+
+void FFMpegStream::callback_read(int fd, bool error) {
+	ssize_t bufferLength = 1024;
+	char buffer[1024];
+	bufferLength = read(fd, buffer, bufferLength);
+	if(bufferLength <= 0) {
+		log::log(log::err, "Invalid read (error). Length: " + to_string(bufferLength) + " Code: " + to_string(errno) + " Message: " + strerror(errno));
+		if(bufferLength == 0 && errno == 0)
+			this->callback_end();
+		else
+			this->callback_error(error ? IO_ERROR : IO_OUTPUT, bufferLength, error, strerror(errno));
+		this->disableBuffering();
+		return;
+	}
+
+	if(error)
+		this->callback_read_error(string(buffer, bufferLength));
+	else
+		this->callback_read_output(string(buffer, bufferLength));
+}
+
+void FFMpegStream::callbackfn_read_output(int fd, short, void* ptrHandle) {
+	((FFMpegStream*) ptrHandle)->callback_read(fd, false);
+}
+
+void FFMpegStream::callbackfn_read_error(int fd, short, void *ptrHandle) {
+	((FFMpegStream*) ptrHandle)->callback_read(fd, true);
 }
