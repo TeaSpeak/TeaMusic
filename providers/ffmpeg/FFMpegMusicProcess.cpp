@@ -275,7 +275,7 @@ inline bool enableNonBlock(int fd){
 }
 
 FFMpegStream::~FFMpegStream() {
-	if(this->stream) this->stream->close();
+	if(this->stream) this->stream->rdbuf()->kill();
 	delete stream;
 	this->stream = nullptr;
 

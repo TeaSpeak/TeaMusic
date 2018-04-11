@@ -223,4 +223,19 @@ FFMpegProvider::FFMpegProvider() {
 
 FFMpegProvider::~FFMpegProvider() {
 	FFMpegProvider::instance = nullptr;
+
+    auto base = this->readerBase;
+    this->readerBase = nullptr;
+    if(base) {
+        event_base_loopbreak(base);
+        event_base_loopexit(base, nullptr);
+
+        if(this->readerDispatch) {
+            if(!this->readerDispatch->join(system_clock::now() + seconds(3))) this->readerDispatch->detach();
+            delete this->readerDispatch;
+            this->readerDispatch = nullptr;
+        }
+
+        event_base_free(base);
+    }
 }
