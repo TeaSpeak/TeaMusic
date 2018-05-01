@@ -97,7 +97,9 @@ namespace music {
                 std::shared_ptr<SampleSegment> popNextSegment() override;
                 std::shared_ptr<SampleSegment> peekNextSegment() override;
 
-                std::string songTitle() override;
+		        std::deque<std::shared_ptr<Thumbnail>> thumbnails() override;
+
+		        std::string songTitle() override;
                 std::string songDescription() override;
 
             private:

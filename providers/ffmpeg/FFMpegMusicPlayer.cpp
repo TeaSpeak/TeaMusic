@@ -319,3 +319,8 @@ void FFMpegMusicPlayer::updateBufferState() {
 		this->stream->enableBuffering();
 	}
 }
+
+deque<shared_ptr<Thumbnail>> FFMpegMusicPlayer::thumbnails() {
+	//TODO generate thumbnails
+	return {};
+}

@@ -16,6 +16,8 @@ namespace music {
 
                 std::string songDescription() override;
 
+                std::deque<std::shared_ptr<Thumbnail>> thumbnails() override;
+
             private:
                 std::shared_ptr<yt::AudioInfo> video;
         };

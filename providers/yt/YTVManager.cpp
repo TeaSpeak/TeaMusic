@@ -8,7 +8,7 @@ using namespace yt;
 using namespace sql;
 using namespace music;
 
-static const char* yt_command = "youtube-dl -s --print-json %s"; //https://www.youtube.com/watch?v=MVyE18LL9OM
+static const char* yt_command = "youtube-dl -s --print-json --get-thumbnail %s";
 
 YTVManager::YTVManager(sql::SqlManager* handle) {
     this->sql = handle;
@@ -26,19 +26,6 @@ struct FMTInfo {
 threads::Future<std::shared_ptr<AudioInfo>> YTVManager::downloadAudio(std::string video) {
     threads::Future<std::shared_ptr<AudioInfo>> future;
 
-    /*
-    if(video.length() != 11) {
-        auto index = video.find("v=");
-        if(index == -1) video = "";
-        else video = video.substr(index + 2);
-        if(video.length() > 11) video = video.substr(0, 11);
-    }
-    if(video.length() != 11) {
-        future.executionFailed("Invalid youtube video id!");
-        return future;
-    }
-     */
-
     _threads.execute([future, video](){
         auto cmdBufferLength = strlen(yt_command) + video.length();
         char cmdBuffer[cmdBufferLength];
@@ -49,7 +36,7 @@ threads::Future<std::shared_ptr<AudioInfo>> YTVManager::downloadAudio(std::strin
 
         redi::pstream proc;
         proc.open(command, redi::pstreams::pstdout | redi::pstreams::pstderr | redi::pstreams::pstdin);
-        string json;
+        string response;
         string err;
         size_t bufferLength = 512;
         char buffer[bufferLength];
@@ -58,7 +45,7 @@ threads::Future<std::shared_ptr<AudioInfo>> YTVManager::downloadAudio(std::strin
             usleep(10);
             while(proc.out().rdbuf()->in_avail() > 0){
                 auto read = proc.out().readsome(buffer, bufferLength);
-                if(read > 0) json += string(buffer, read);
+                if(read > 0) response += string(buffer, read);
             }
 
             while(proc.err().rdbuf()->in_avail() > 0){
@@ -77,17 +64,23 @@ threads::Future<std::shared_ptr<AudioInfo>> YTVManager::downloadAudio(std::strin
                 music::log::log(music::log::debug, "[YT-DL] Message: " + err);
             }
         }
-        if(hasError || (proc.fail() && json.empty())) {
+        if(hasError || (proc.fail() && response.empty())) {
             future.executionFailed(err);
             return;
         }
-        log::log(log::trace, "[YT-DL] Json response: " + json);
+        log::log(log::trace, "[YT-DL] Json response: " + response);
+        auto thumbnailIndex = response.find('\n');
+        if(thumbnailIndex == string::npos) {
+            future.executionFailed("Could not resolve the thumbnail");
+            return;
+        }
+        auto thumbnail = response.substr(0, thumbnailIndex);
 
         Json::Value root;
         Json::CharReaderBuilder rbuilder;
         std::string errs;
 
-        istringstream jsonStream(json);
+        istringstream jsonStream(response.substr(thumbnailIndex + 1));
         bool parsingSuccessful = Json::parseFromStream(rbuilder, jsonStream, &root, &errs);
         if (!parsingSuccessful)
         {
@@ -96,9 +89,9 @@ threads::Future<std::shared_ptr<AudioInfo>> YTVManager::downloadAudio(std::strin
         }
 
         auto stream = !root["is_live"].isNull() && root["is_live"].asBool();
-        log::log(log::debug, "Song title: " + root["fulltitle"].asString());
-        log::log(log::debug, "Song id: " + root["id"].asString());
-        log::log(log::debug, string() + "Live stream: " + (stream ? "yes" : "no"));
+        log::log(log::debug, "[YT-DL] Song title: " + root["fulltitle"].asString());
+        log::log(log::debug, "[YT-DL] Song id: " + root["id"].asString());
+        log::log(log::debug, string() + "[YT-DL] Live stream: " + (stream ? "yes" : "no"));
         //is_live
 
         auto requests = root["formats"];
@@ -151,8 +144,8 @@ threads::Future<std::shared_ptr<AudioInfo>> YTVManager::downloadAudio(std::strin
             log::log(log::err, "[YT-DL] Failed to get a valid audio stream with valid quality!");
             streamUrl = urls[0].url;
         }
-        log::log(log::debug, string() + "Using audio quality " + audio_prefer_codec_queue[index]);
-        future.executionSucceed(std::make_shared<AudioInfo>(AudioInfo{root["fulltitle"].asString(), "unknown", streamUrl, stream}));
+        log::log(log::debug, string() + "[YT-DL] Using audio quality " + audio_prefer_codec_queue[index]);
+        future.executionSucceed(std::make_shared<AudioInfo>(AudioInfo{root["fulltitle"].asString(), "unknown", thumbnail, streamUrl, stream}));
     });
     return future;
 }

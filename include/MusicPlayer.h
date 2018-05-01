@@ -4,6 +4,7 @@
 #include <chrono>
 #include <memory>
 #include <deque>
+#include <utility>
 #include <ThreadPool/Mutex.h>
 #include <ThreadPool/Future.h>
 
@@ -50,7 +51,7 @@ namespace music {
 
         bool full = false;
 
-	    SampleSegment(const int16_t *segments, const size_t maxSegmentLength, const size_t channels) : segments(segments), maxSegmentLength(maxSegmentLength), channels(channels) {}
+	    SampleSegment(int16_t *segments, const size_t maxSegmentLength, const size_t channels) : segments(segments), maxSegmentLength(maxSegmentLength), channels(channels) {}
 
 	    ~SampleSegment(){
             if(segments) free((void *) segments);
@@ -61,6 +62,31 @@ namespace music {
 			return std::make_shared<SampleSegment>(buffer, maxSamples, channels);
 	    }
     };
+
+	enum ThumbnailType {
+		THUMBNAIL_NONE,
+		THUMBNAIL_URL
+	};
+
+	class Thumbnail {
+		public:
+			Thumbnail(ThumbnailType _type) : _type(_type) {}
+			~Thumbnail() {}
+
+			ThumbnailType type() { return this->_type; }
+		private:
+			ThumbnailType _type;
+	};
+
+	class ThumbnailUrl : public Thumbnail {
+		public:
+			ThumbnailUrl(std::string url) : Thumbnail(ThumbnailType::THUMBNAIL_URL), _url(std::move(url)) {}
+			~ThumbnailUrl() {}
+
+			std::string url() { return this->_url; }
+		private:
+			std::string _url;
+	};
 
     enum PlayerState {
         STATE_UNINIZALISIZED,
@@ -108,6 +134,7 @@ namespace music {
 
             virtual std::string songTitle() = 0;
             virtual std::string songDescription() = 0;
+		    virtual std::deque<std::shared_ptr<Thumbnail>> thumbnails() = 0;
 
             virtual bool good() = 0;
             virtual std::string error() = 0;

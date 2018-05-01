@@ -9,6 +9,7 @@ namespace yt {
     struct AudioInfo {
         std::string title;
         std::string description;
+        std::string thumbnail;
         std::string stream_url;
 
         bool live_stream;

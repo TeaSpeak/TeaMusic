@@ -156,7 +156,7 @@ void FFMpegMusicPlayer::spawnProcess() {
 
     string info;
     auto read = this->readInfo(info, system_clock::now() + seconds(5), "Metadata:\n");
-    PERR("Could not get metadata tag");
+    PERR("Could not get metadata tag (" + this->errBuff + ")");
 
     //Duration parsing
     if(live_stream) {
