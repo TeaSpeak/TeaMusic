@@ -8,7 +8,7 @@ using namespace yt;
 using namespace sql;
 using namespace music;
 
-static const char* yt_command = "youtube-dl -v -s --print-json --get-thumbnail %s";
+static const char* yt_command = "youtube-dl -v --no-check-certificate -s --print-json --get-thumbnail %s";
 
 YTVManager::YTVManager(sql::SqlManager* handle) {
     this->sql = handle;
