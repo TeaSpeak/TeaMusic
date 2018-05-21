@@ -8,7 +8,7 @@ using namespace yt;
 using namespace sql;
 using namespace music;
 
-static const char* yt_command = "youtube-dl -s --print-json --get-thumbnail %s";
+static const char* yt_command = "youtube-dl -v -s --print-json --get-thumbnail %s";
 
 YTVManager::YTVManager(sql::SqlManager* handle) {
     this->sql = handle;
@@ -23,10 +23,13 @@ struct FMTInfo {
     int bitrate;
     string url;
 };
+
+#define YTDL_DEBUG_PREFIX "[debug] "
 threads::Future<std::shared_ptr<AudioInfo>> YTVManager::downloadAudio(std::string video) {
     threads::Future<std::shared_ptr<AudioInfo>> future;
 
     _threads.execute([future, video](){
+	    /* Execute the command */
         auto cmdBufferLength = strlen(yt_command) + video.length();
         char cmdBuffer[cmdBufferLength];
         sprintf(cmdBuffer, yt_command, video.c_str());
@@ -53,34 +56,65 @@ threads::Future<std::shared_ptr<AudioInfo>> YTVManager::downloadAudio(std::strin
                 if(read > 0) err += string(buffer, read);
             }
         }
-        if(err.find('\n') == err.length() - 1) err = err.substr(0, err.length() - 1);
-        bool hasError = err.find("ERROR") != std::string::npos;
-        if(!err.empty()) {
-            if(hasError) {
-                music::log::log(music::log::err, "[YT-DL] Invalid execution of command " + command);
-                music::log::log(music::log::err, "[YT-DL] Message: " + err);
-            } else {
-                music::log::log(music::log::debug, "[YT-DL] Got some messages from error stream from command " + command);
-                music::log::log(music::log::debug, "[YT-DL] Message: " + err);
-            }
-        }
-        if(hasError || (proc.fail() && response.empty())) {
-            future.executionFailed(err);
-            return;
-        }
-        log::log(log::trace, "[YT-DL] Json response: " + response);
-        auto thumbnailIndex = response.find('\n');
-        if(thumbnailIndex == string::npos) {
-            future.executionFailed("Could not resolve the thumbnail");
-            return;
-        }
-        auto thumbnail = response.substr(0, thumbnailIndex);
+
+	    /* Parsing the response */
+        vector<string> available_lines;
+	    {   //Parse the lines
+		    size_t index = 0;
+		    do {
+			    auto found = response.find('\n', index);
+			    available_lines.push_back(response.substr(index, found - index));
+			    if(available_lines.back().find_first_not_of(" \n\r") == std::string::npos) available_lines.pop_back();
+			    index = found + 1;
+		    } while(index != 0);
+	    }
+
+	    vector<string> available_error_lines;
+	    {   //Parse the lines
+		    size_t index = 0;
+		    do {
+			    auto found = err.find('\n', index);
+			    available_error_lines.push_back(err.substr(index, found - index));
+			    if(available_error_lines.back().find_first_not_of(" \n\r") == std::string::npos) available_error_lines.pop_back();
+			    index = found + 1;
+		    } while(index != 0);
+	    }
+
+	    /* Analyzing the response */
+	    bool debug_notified = false;
+	    for(const auto& entry : available_error_lines) {
+		    if(entry.find(YTDL_DEBUG_PREFIX) == 0) {
+			    if(!debug_notified) {
+				    debug_notified = true;
+				    log::log(log::trace, "[YT-DL] Got command execution debug:");
+			    }
+			    log::log(log::trace, "[YT-DL] " + entry);
+		    }
+	    }
+
+	    for(const auto& error : available_error_lines)
+		    if(error.find("ERROR") != std::string::npos) {
+				future.executionFailed(error);
+			    return;
+		    }
+
+	    if(available_lines.size() < 2) {
+		    log::log(log::err, "[YT-DL] Malformed response (response to small!)");
+		    log::log(log::debug, "[YT-DL] Response:");
+		    for(const auto& entry : available_lines)
+			    log::log(log::debug, "[YT-DL] " + entry);
+		    future.executionFailed("Malformed response (to small)");
+		    return;
+	    }
+        log::log(log::trace, "[YT-DL] Got thumbnail response: " + available_lines[available_lines.size() - 2]);
+	    log::log(log::trace, "[YT-DL] Got json response: " + available_lines[available_lines.size() - 1]);
+        auto thumbnail = available_lines[available_lines.size() - 2];
 
         Json::Value root;
         Json::CharReaderBuilder rbuilder;
         std::string errs;
 
-        istringstream jsonStream(response.substr(thumbnailIndex + 1));
+        istringstream jsonStream(available_lines[available_lines.size() - 1]);
         bool parsingSuccessful = Json::parseFromStream(rbuilder, jsonStream, &root, &errs);
         if (!parsingSuccessful)
         {
