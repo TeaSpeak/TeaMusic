@@ -10,7 +10,8 @@ using namespace music;
 using namespace music::player;
 
 extern std::string ffmpeg_command;
-const static char* ffmpeg_command_args = "-hide_banner -ss %1$s -stats -i \"%2$s\" -vn -bufsize 512k -ac %3$d -ar 48000 -f s16le -acodec pcm_s16le pipe:1"; //-vn = disable video | -bufsize 512k buffer audio
+const static char* ffmpeg_command_args = "-hide_banner -stats -i \"%2$s\" -vn -bufsize 512k -ac %3$d -ar 48000 -f s16le -acodec pcm_s16le pipe:1"; //-vn = disable video | -bufsize 512k buffer audio
+const static char* ffmpeg_command_args_seek = "-hide_banner -ss %1$s -stats -i \"%2$s\" -vn -bufsize 512k -ac %3$d -ar 48000 -f s16le -acodec pcm_s16le pipe:1"; //-vn = disable video | -bufsize 512k buffer audio
 //TODO Channel count variable
 
 std::string replaceString(std::string subject, const std::string& search, const std::string& replace) {
@@ -40,7 +41,7 @@ do {\
             ss << replaceString(this->errBuff, "\n", "\n    ") << endl; \
         } \
         this->applayError(ss.str()); \
-        log::log(log::debug, "[FFMPEG] Full error log: \n" + this->errHistory); \
+        log::log(log::debug, "[FFMPEG][" + to_string(this) + "] Full error log: \n" + this->errHistory); \
         return; \
     } \
 } while(0)
@@ -123,6 +124,23 @@ inline std::string buildTime(PlayerUnits units){
      Stream mapping:
        Stream #0:0 -> #0:0 (mp3 (native) -> pcm_s16le (native))
      Press [q] to stop, [?] for help
+
+
+     ---------------------
+     Could be also like this:
+
+[19:43:01] [TRACE] Input #0, mp3, from 'http://stream01.iloveradio.de/iloveradio1.mp3':
+[19:43:01] [TRACE]   Metadata:
+[19:43:01] [TRACE]     StreamTitle     : SEAN PAUL - GOT 2 LUV U
+[19:43:01] [TRACE]     icy-br          : 128
+[19:43:01] [TRACE]     icy-name        : I Love Radio - Charts & Hits by iloveradio.de
+[19:43:01] [TRACE]     icy-pub         : -1
+[19:43:01] [TRACE]     icy-url         : iloveradio.de
+[19:43:01] [TRACE]   Duration: N/A, start: 0.000000, bitrate: 128 kb/s
+[19:43:01] [TRACE]     Stream #0:0: Audio: mp3, 44100 Hz, stereo, s16p, 128 kb/s
+[19:43:01] [TRACE] Stream mapping:
+[19:43:01] [TRACE]   Stream #0:0 -> #0:0 (mp3 (native) -> pcm_s16le (native))
+[19:43:01] [TRACE] Press [q] to stop, [?] for help
   */
 
 void FFMpegMusicPlayer::destroyProcess() {
@@ -145,14 +163,16 @@ void FFMpegMusicPlayer::spawnProcess() {
 	this->bufferedSamples.clear();
     this->end_reached = false;
 
-    char commandBuffer[1024];
-    sprintf(commandBuffer, ffmpeg_command_args, buildTime(this->seekOffset).c_str(), this->fname.c_str(), this->_channelCount);
-    auto cmd = ffmpeg_command + " " + string(commandBuffer);
-    log::log(log::debug, "[FFMpeg] Executing command: " + cmd);
+
+	char argumentBuffer[1024];
+	sprintf(argumentBuffer, this->seekOffset.count() > 0 ? ffmpeg_command_args_seek : ffmpeg_command_args, buildTime(this->seekOffset).c_str(), this->fname.c_str(), this->_channelCount);
+
+    auto cmd = ffmpeg_command + " " + string(argumentBuffer);
+    log::log(log::debug, "[FFMPEG][" + to_string(this) + "] Executing command: " + cmd);
     this->stream = std::make_shared<FFMpegStream>(new redi::pstream(cmd, redi::pstreams::pstdin | redi::pstreams::pstderr | redi::pstreams::pstdout));
     auto self = this->stream;
     self->channels = this->_channelCount;
-    log::log(log::debug, "[FFMpeg] Awaiting info");
+    log::log(log::debug, "[FFMPEG][" + to_string(this) + "] Awaiting info");
 
     string info;
     auto read = this->readInfo(info, system_clock::now() + seconds(5), "Metadata:\n");

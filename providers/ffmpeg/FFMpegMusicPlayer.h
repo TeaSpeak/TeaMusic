@@ -3,8 +3,16 @@
 #include <memory>
 #include <map>
 #include <event.h>
+#include <sstream>
 
 #define DEBUG_FFMPEG
+template <typename T>
+inline std::string to_string(T* ptr) {
+	std::ostringstream ss;
+	ss << ptr;
+	return ss.str();
+}
+
 namespace music {
     namespace player {
 	    enum IOStreamType {

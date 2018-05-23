@@ -114,109 +114,11 @@ std::shared_ptr<SampleSegment> FFMpegMusicPlayer::popNextSegment() {
 }
 
 extern void trimString(std::string&);
-
-/*
-void FFMpegMusicPlayer::readNextSegment(const std::chrono::nanoseconds& max_time) {
-    threads::MutexLock lock(this->streamLock);
-    auto streamHandle = this->stream;
-    if(!streamHandle || this->end_reached) {
-        this->nextSegment = nullptr;
-        return;
-    }
-
-    if(streamHandle->stream->err()) {
-        string info;
-        auto read = this->readInfo(info, system_clock::now(), "kbits/s ");
-        if(read > 0){
-            trimString(info);
-            if(info[0] == '\r') info = info.substr(1);
-            log::log(log::trace, "Read info: " + info);
-        } else if((read = this->readInfo(info, system_clock::now(), "Header missing")) > 0){ //possible streaming
-            log::log(log::trace, "Dropped error: " + info + "|" + this->errBuff);
-            this->errBuff = "";
-            auto stream = this->stream;
-            char buffer[30];
-            while(stream->stream->out().rdbuf()->in_avail() > 0){
-                stream->stream->out().readsome(buffer, 30);
-            }
-            return;
-        }
-
-        if(this->errBuff.size() > 64) { //"size=   ?XkB time=XX:XX:XX.XX bitrate=?X.X" -> 42 + n (22) bytes for digits lengths
-            this->applayError(this->errBuff);
-            this->errBuff.empty();
-            return; //May stop process?
-        }
-        //log::log(log::debug, "Err: " + this->errBuff);
-        //TODO close stuff
-        //return;
-    }
-
-    auto sampleCount = this->preferredSampleCount();
-    auto channelCount = streamHandle->channels;
-
-    size_t readLength = sampleCount * channelCount * sizeof(uint16_t); //We have 2 channels
-    size_t index = 0;
-    auto buffer = static_cast<char *>(malloc(readLength));
-
-    auto beg = system_clock::now();
-    while(streamHandle->stream->out().rdbuf()->is_open()){
-        if(streamHandle->stream->out().rdbuf()->in_avail() > 0) {
-            auto read = streamHandle->stream->out().readsome(&buffer[index], readLength - index);
-            if(read > 0) {
-                index += read;
-                //log::log(log::debug, "Read " + to_string(readLength) + " - " + to_string(index));
-                if(index >= readLength) break;
-                continue;
-            }
-        }
-
-        if(streamHandle->stream->out().bad()) {
-            this->stop(); //Empty!
-            this->fireEvent(MusicEvent::EVENT_END);
-            log::log(log::debug, "[FFMPEG] readNextSegment() failed.");
-            return;
-        }
-
-        if(beg + max_time < system_clock::now()) {
-            log::log(log::trace, "[FFMPEG] readNextSegment() -> failed (read loop need more time than allowed)");
-            break;
-        }
-        usleep(250);
-    }
-
-    if(index != readLength && index != 0) {
-        log::log(log::debug, "[FFMPEG][WARN] readNextSegment() -> No full read! (" + to_string(index) + "/" + to_string(readLength) + ")");
-        sampleCount = index / streamHandle->channels / sizeof(uint16_t);
-    }
-
-    if(sampleCount > 0 && index > 0){
-        streamHandle->sampleOffset += sampleCount;
-        auto elm = std::make_shared<SampleSegment>();
-        elm->channels = streamHandle->channels;
-        elm->segmentLength = sampleCount;
-        elm->segments = reinterpret_cast<int16_t *>(buffer);
-        this->nextSegment = elm;
-    }
-
-    if(!streamHandle->stream->out().rdbuf()->is_open() || !streamHandle->stream->err().rdbuf()->is_open() || index == 0) {
-        if(read_success.time_since_epoch().count() == 0) read_success = system_clock::now();
-
-        if(read_success + seconds(1) < system_clock::now()) {
-            this->end_reached = true;
-            log::log(log::debug, string() + "[FFMPEG] readNextSegment() failed (" + (index == 0 ? "read zero" : "ffmpeg stream closed") + ").");
-        }
-        return;
-    }
-    read_success = system_clock::now();
-}
-*/
-
 const static std::regex timeline_regex = []() -> std::regex {
 	try {
 		return std::regex(R"([ ]{0,}size=[ ]+[0-9]+kB[ ]+time=[0-9]+:[0-9]{2}:[0-9]{2}(\.[0-9]+)?[ ]+bitrate=[0-9]+(\.[0-9]+)kbits/s[^\x00]+)");
 	} catch (std::exception& ex) {
-		log::log(log::err, "Could not compile timeline regex!");
+		log::log(log::err, "[FFMPEG] Could not compile timeline regex!");
 		return std::regex("");
 	}
 }();
@@ -234,10 +136,10 @@ void FFMpegMusicPlayer::callback_read_err(const std::string& constBuffer) {
 	for(const auto& line : lines) {
 		if(std::regex_match(line, timeline_regex)) continue;
 		if(!error_send) {
-			log::log(log::err, "Got error message from FFMpeg:");
+			log::log(log::err, "[FFMPEG][" + to_string(this) + "] Got error message from FFMpeg:");
 			error_send = true;
 		}
-		log::log(log::err, constBuffer);
+		log::log(log::err, "[FFMPEG][" + to_string(this) + "] " + constBuffer);
 	}
 }
 
@@ -291,7 +193,7 @@ void FFMpegMusicPlayer::callback_read_output(const std::string& constBuffer) {
 		this->byteBufferIndex = overhead;
 	}
 	if(readBufferIndex > buffer.length())
-		log::log(log::critical, "Invalid read (overflow!) Application could crash");
+		log::log(log::critical, "[FFMPEG][" + to_string(this) + "] Invalid read (overflow!) Application could crash");
 
 	this->updateBufferState();
 }
@@ -311,11 +213,11 @@ void FFMpegMusicPlayer::updateBufferState() {
 	auto bufferedSamples = this->bufferedSampleCount();
 	auto bufferedSeconds = bufferedSamples / this->sampleRate();
 	if(bufferedSeconds > 20 && this->stream->buffering) {
-		log::log(log::debug, "Stop buffering");
+		log::log(log::debug, "[FFMPEG][" + to_string(this) + "] Stop buffering");
 		this->stream->disableBuffering();
 	}
 	if(bufferedSeconds < 10 && !this->stream->buffering) {
-		log::log(log::debug, "Start buffering");
+		log::log(log::debug, "[FFMPEG][" + to_string(this) + "] Start buffering");
 		this->stream->enableBuffering();
 	}
 }
