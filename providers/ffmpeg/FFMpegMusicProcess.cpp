@@ -10,7 +10,7 @@ using namespace music;
 using namespace music::player;
 
 extern std::string ffmpeg_command;
-const static char* ffmpeg_command_args = "-hide_banner -stats -i \"%2$s\" -vn -bufsize 512k -ac %3$d -ar 48000 -f s16le -acodec pcm_s16le pipe:1"; //-vn = disable video | -bufsize 512k buffer audio
+const static char* ffmpeg_command_args = "-hide_banner -stats -i \"%1$s\" -vn -bufsize 512k -ac %2$d -ar 48000 -f s16le -acodec pcm_s16le pipe:1"; //-vn = disable video | -bufsize 512k buffer audio
 const static char* ffmpeg_command_args_seek = "-hide_banner -ss %1$s -stats -i \"%2$s\" -vn -bufsize 512k -ac %3$d -ar 48000 -f s16le -acodec pcm_s16le pipe:1"; //-vn = disable video | -bufsize 512k buffer audio
 //TODO Channel count variable
 
@@ -23,7 +23,7 @@ std::string replaceString(std::string subject, const std::string& search, const 
     return subject;
 }
 
-inline void trimString(std::string &str) {
+void trimString(std::string &str) {
     size_t endOff = str.length();
     size_t begOff = 0;
     while(endOff > 0 && str[endOff - 1] == ' ') endOff--;
@@ -157,6 +157,7 @@ void FFMpegMusicPlayer::destroyProcess() {
 	this->bufferedSamples.clear();
 }
 
+#define ARGUMENT_BUFFER_LENGTH 2048
 void FFMpegMusicPlayer::spawnProcess() {
     threads::MutexLock lock(this->streamLock);
     this->destroyProcess();
@@ -164,10 +165,16 @@ void FFMpegMusicPlayer::spawnProcess() {
     this->end_reached = false;
 
 
-	char argumentBuffer[1024];
-	sprintf(argumentBuffer, this->seekOffset.count() > 0 ? ffmpeg_command_args_seek : ffmpeg_command_args, buildTime(this->seekOffset).c_str(), this->fname.c_str(), this->_channelCount);
-
+	auto argumentBuffer = new char[ARGUMENT_BUFFER_LENGTH];
+	auto seek_offset = buildTime(this->seekOffset);
+	if(this->seekOffset.count() > 0) {
+		snprintf(argumentBuffer, ARGUMENT_BUFFER_LENGTH, ffmpeg_command_args_seek, seek_offset.c_str(), this->fname.c_str(), this->_channelCount);
+	} else {
+		snprintf(argumentBuffer, ARGUMENT_BUFFER_LENGTH, ffmpeg_command_args, this->fname.c_str(), this->_channelCount);
+	}
     auto cmd = ffmpeg_command + " " + string(argumentBuffer);
+	delete[] argumentBuffer;
+
     log::log(log::debug, "[FFMPEG][" + to_string(this) + "] Executing command: " + cmd);
     this->stream = std::make_shared<FFMpegStream>(new redi::pstream(cmd, redi::pstreams::pstdin | redi::pstreams::pstderr | redi::pstreams::pstdout));
     auto self = this->stream;
@@ -201,7 +208,7 @@ void FFMpegMusicPlayer::spawnProcess() {
     read = this->readInfo(info, system_clock::now() + seconds(5), "Press [q] to stop, [?] for help\n");
     PERR("Could not read junk data");
 
-    log::log(log::trace, "Parsed video/lstream info for \"" + this->fname + "\". Full string:\n" + this->errHistory);
+    log::log(log::trace, "Parsed video/stream info for \"" + this->fname + "\". Full string:\n" + this->errHistory);
 
 	this->stream->eventBase = FFMpegProvider::instance->readerBase; //TODO pool?
 	this->stream->initializeEvents();
