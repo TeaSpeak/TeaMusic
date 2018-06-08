@@ -14,25 +14,9 @@ else()
 	SET(HAS_SHARED_SOURCE OFF)
 endif()
 
-option(BUILD_PROVIDER_OPUS "Build the opus provider" ON)
 option(BUILD_PROVIDER_YT "Build the Youtube-dl provider. (You requre extra headers)" ${HAS_SHARED_SOURCE})
 option(BUILD_PROVIDER_FFMPEG "Build the FFMpeg provider. (You requre extra headers)" ${HAS_SHARED_SOURCE})
 option(BUILD_HELPERS "Build the development helper classes" ON)
-
-if(BUILD_PROVIDER_OPUS)
-	message("Building OPUS provider")
-	add_library(ProviderOpus SHARED ${HEADERS} providers/opus/OpusProvider.cpp providers/opus/OpusMusicPlayer.cpp)
-	#The Youtube provider requires this libraries:
-	#- TeaMusic
-	#- opus
-	#- opusfile
-	#- ThreadPoolStatic
-	target_link_libraries(ProviderOpus TeaMusic opus opusfile)
-	set_target_properties(ProviderOpus
-			PROPERTIES
-			PREFIX "000" #Library load order (dont requre other providers)
-	)
-endif()
 
 if (BUILD_PROVIDER_YT)
 	message("Building YouTube provider")
