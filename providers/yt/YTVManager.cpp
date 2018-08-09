@@ -1,6 +1,6 @@
 #include <providers/yt/YoutubeMusicPlayer.h>
 #include <misc/pstream.h>
-#include <jsoncpp/json.h>
+#include <json/json.h>
 #include "YTVManager.h"
 
 using namespace std;
