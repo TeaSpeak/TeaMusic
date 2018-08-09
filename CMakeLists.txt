@@ -12,6 +12,8 @@ if(EXISTS ../shared/src/)
 	SET(HAS_SHARED_SOURCE ON)
 else()
 	SET(HAS_SHARED_SOURCE OFF)
+	set(LIBRARY_PATH_THREAD_POOL "ThreadPoolStatic")
+	set(LIBRARY_PATH_JSON "jsoncpp_static")
 endif()
 
 option(BUILD_PROVIDER_YT "Build the Youtube-dl provider. (You requre extra headers)" ${HAS_SHARED_SOURCE})
@@ -21,7 +23,7 @@ option(BUILD_HELPERS "Build the development helper classes" ON)
 if (BUILD_PROVIDER_YT)
 	message("Building YouTube provider")
 	add_library(ProviderYT SHARED ${HEADERS} providers/yt/YTProvider.cpp providers/yt/YTVManager.cpp providers/yt/YoutubeMusicPlayer.cpp)
-	target_link_libraries(ProviderYT /usr/local/lib/libjsoncpp_static.a ThreadPoolStatic ProviderFFMpeg)
+	target_link_libraries(ProviderYT ${LIBRARY_PATH_JSON} ${LIBRARY_PATH_THREAD_POOL} ProviderFFMpeg)
 	#The Youtube provider requires this libraries:
 	#- TeaMusic
 	#- ProviderOpus
@@ -35,7 +37,7 @@ endif ()
 if(BUILD_PROVIDER_FFMPEG)
 	message("Building FFMpeg provider")
 	add_library(ProviderFFMpeg SHARED ${HEADERS} providers/ffmpeg/FFMpegProvider.cpp providers/ffmpeg/FFMpegMusicPlayer.cpp providers/ffmpeg/FFMpegMusicProcess.cpp)
-	target_link_libraries(ProviderFFMpeg ThreadPoolStatic ${LIBEVENT_PATH}/libevent.a)
+	target_link_libraries(ProviderFFMpeg ${LIBRARY_PATH_THREAD_POOL} ${LIBEVENT_PATH}/libevent.a)
 	#The FFMpeg provider requires this libraries:
 	#- TeaMusic
 	#- ThreadPoolStatic
