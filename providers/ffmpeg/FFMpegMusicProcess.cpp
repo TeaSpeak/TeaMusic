@@ -144,24 +144,30 @@ inline std::string buildTime(PlayerUnits units){
   */
 
 void FFMpegMusicPlayer::destroyProcess() {
-    threads::MutexLock lock(this->streamLock);
-    if(!this->stream) return;
+	{
+		threads::MutexLock lock(this->streamLock);
 
-    this->end_reached = true;
-    if(this->stream->stream) this->stream->stream;
-    this->stream = nullptr;
-    this->end_reached = false;
+		if(this->stream) {
+			this->end_reached = true;
+			if(this->stream->stream) this->stream->stream;
+			this->stream = nullptr;
+			this->end_reached = false;
+		}
 
-    this->errBuff = "";
-    this->errHistory = "";
-	this->bufferedSamples.clear();
+		this->errBuff = "";
+		this->errHistory = "";
+	}
+	{
+		threads::MutexLock lock(this->sampleLock);
+		this->sampleOffset = 0;
+		this->bufferedSamples.clear();
+	}
 }
 
 #define ARGUMENT_BUFFER_LENGTH 2048
 void FFMpegMusicPlayer::spawnProcess() {
     threads::MutexLock lock(this->streamLock);
     this->destroyProcess();
-	this->bufferedSamples.clear();
     this->end_reached = false;
 
 
