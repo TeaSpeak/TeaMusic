@@ -45,7 +45,7 @@ void FFMpegMusicPlayer::stop() {
 }
 
 PlayerUnits FFMpegMusicPlayer::length() { return this->stream ? this->stream->duration : PlayerUnits(0); }
-PlayerUnits FFMpegMusicPlayer::currentIndex() { return this->stream ? milliseconds((int64_t) (this->sampleOffset * 1000.f / this->sampleRate())) : PlayerUnits(0); }
+PlayerUnits FFMpegMusicPlayer::currentIndex() { return this->stream ? this->seekOffset + milliseconds((int64_t) (this->sampleOffset * 1000.f / this->sampleRate())) : PlayerUnits(0); }
 PlayerUnits FFMpegMusicPlayer::bufferedUntil() {
 	if(!this->stream) return PlayerUnits(0);
 	return this->currentIndex() + milliseconds((int64_t) (this->bufferedSampleCount() * 1000.f / this->sampleRate())) ;
