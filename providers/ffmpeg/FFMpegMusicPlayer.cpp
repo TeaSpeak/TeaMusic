@@ -1,7 +1,7 @@
 #include <map>
-#include <misc/pstream.h>
-#include <include/MusicPlayer.h>
 #include <regex>
+#include <include/MusicPlayer.h>
+#include "providers/shared/pstream.h"
 #include "FFMpegMusicPlayer.h"
 
 using namespace std;

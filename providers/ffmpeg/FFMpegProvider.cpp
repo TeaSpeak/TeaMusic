@@ -1,6 +1,7 @@
 #include "FFMpegProvider.h"
 #include "FFMpegMusicPlayer.h"
-#include <misc/pstream.h>
+#include "providers/shared/INIParser.h"
+#include "providers/shared/pstream.h"
 
 using namespace std;
 using namespace std::chrono;

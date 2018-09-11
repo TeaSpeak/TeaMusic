@@ -1,9 +1,8 @@
 #include <include/MusicPlayer.h>
-#include <ThreadPool/Mutex.h>
-#include <memory>
-#include <map>
 #include <event.h>
 #include <sstream>
+#include <memory>
+#include <map>
 
 #define DEBUG_FFMPEG
 template <typename T>

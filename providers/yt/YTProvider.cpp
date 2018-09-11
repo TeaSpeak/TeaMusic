@@ -1,4 +1,5 @@
-#include <misc/pstream.h>
+#include <providers/shared/pstream.h>
+#include "providers/shared/INIParser.h"
 #include "YoutubeMusicPlayer.h"
 #include "YTProvider.h"
 
@@ -16,7 +17,7 @@ class YTProvider : public PlayerProvider {
         virtual ~YTProvider() = default;
 
         threads::Future<std::shared_ptr<music::MusicPlayer>> createPlayer(const std::string &string) override {
-            return manager->playAudio(string);
+            return manager->create_stream(string);
         }
 
 
@@ -67,7 +68,7 @@ std::shared_ptr<music::manager::PlayerProvider> create_provider() {
     }
     music::log::log(music::log::info, "[YT-DL] Resolved youtube-dl with version " + json);
 
-    manager = new yt::YTVManager(nullptr); //TODO generate sql db!
+    manager = new yt::YTVManager();
     return std::shared_ptr<YTProvider>(new YTProvider(), [](YTProvider* provider){
         if(!provider) return;
         delete provider;

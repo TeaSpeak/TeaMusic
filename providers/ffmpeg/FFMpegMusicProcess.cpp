@@ -1,6 +1,6 @@
 #include <map>
 #include <sstream>
-#include <misc/pstream.h>
+#include "providers/shared/pstream.h"
 #include "FFMpegMusicPlayer.h"
 #include "FFMpegProvider.h"
 
@@ -40,7 +40,7 @@ do {\
             ss << "\n  Additional error:\n    "; \
             ss << replaceString(this->errBuff, "\n", "\n    ") << endl; \
         } \
-        this->applayError(ss.str()); \
+        this->apply_error(ss.str()); \
         log::log(log::debug, "[FFMPEG][" + to_string(this) + "] Full error log: \n" + this->errHistory); \
         return; \
     } \
@@ -189,15 +189,15 @@ void FFMpegMusicPlayer::spawnProcess() {
 
     string info;
     auto read = this->readInfo(info, system_clock::now() + seconds(5), "Metadata:\n");
-    PERR("Could not get metadata tag (" + this->errBuff + ")");
+	PERR("Could not get metadata tag (" + this->errBuff + ")");
 
     //Duration parsing
     if(live_stream) {
         read = this->readInfo(info, system_clock::now() + seconds(5), "Stream #");
-        PERR("Could not find stream begin");
+	    PERR("Could not find stream begin");
     } else {
         read = this->readInfo(info, system_clock::now() + seconds(5), "Duration: ");
-        PERR("Could not find metadata");
+	    PERR("Could not find metadata");
     }
 
     self->metadata = parseMetadata(info);
@@ -207,12 +207,12 @@ void FFMpegMusicPlayer::spawnProcess() {
 
     if(!live_stream) {
         read = this->readInfo(info, system_clock::now() + seconds(5), ", ");
-        PERR("Could not get duration");
+	    PERR("Could not get duration");
         self->duration = parseTime(info);
         log::log(log::info, "Duration: " + info + " | " + to_string(duration_cast<seconds>(parseTime(info)).count()) + " Seconds");
     }
     read = this->readInfo(info, system_clock::now() + seconds(5), "Press [q] to stop, [?] for help\n");
-    PERR("Could not read junk data");
+	PERR("Could not read junk data");
 
     log::log(log::trace, "Parsed video/stream info for \"" + this->fname + "\". Full string:\n" + this->errHistory);
 

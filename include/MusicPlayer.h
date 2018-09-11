@@ -202,7 +202,7 @@ namespace music {
 
             void unregisterEventHandler(const std::string&) override;
         protected:
-            void applayError(const std::string& _err) {
+            void apply_error(const std::string &_err) {
                 this->_error = _err;
                 this->fireEvent(MusicEvent::EVENT_ERROR);
             }

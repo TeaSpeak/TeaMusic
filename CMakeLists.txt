@@ -7,17 +7,8 @@ set(CMAKE_LIBRARY_OUTPUT_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/bin/providers")
 
 set(HEADERS include/MusicPlayer.h)
 
-if(EXISTS ../shared/src/)
-	include_directories(../shared/src)
-	SET(HAS_SHARED_SOURCE ON)
-else()
-	SET(HAS_SHARED_SOURCE OFF)
-	set(LIBRARY_PATH_THREAD_POOL "ThreadPoolStatic")
-	set(LIBRARY_PATH_JSON "jsoncpp_static")
-endif()
-
-option(BUILD_PROVIDER_YT "Build the Youtube-dl provider. (You requre extra headers)" ${HAS_SHARED_SOURCE})
-option(BUILD_PROVIDER_FFMPEG "Build the FFMpeg provider. (You requre extra headers)" ${HAS_SHARED_SOURCE})
+option(BUILD_PROVIDER_YT "Build the Youtube-dl provider. (You requre extra headers)" ON)
+option(BUILD_PROVIDER_FFMPEG "Build the FFMpeg provider. (You requre extra headers)" ON)
 option(BUILD_HELPERS "Build the development helper classes" ON)
 
 if (BUILD_PROVIDER_YT)
@@ -37,10 +28,7 @@ endif ()
 if(BUILD_PROVIDER_FFMPEG)
 	message("Building FFMpeg provider")
 	add_library(ProviderFFMpeg SHARED ${HEADERS} providers/ffmpeg/FFMpegProvider.cpp providers/ffmpeg/FFMpegMusicPlayer.cpp providers/ffmpeg/FFMpegMusicProcess.cpp)
-	target_link_libraries(ProviderFFMpeg ${LIBRARY_PATH_THREAD_POOL} ${LIBEVENT_PATH}/libevent.a)
-	#The FFMpeg provider requires this libraries:
-	#- TeaMusic
-	#- ThreadPoolStatic
+	target_link_libraries(ProviderFFMpeg ${LIBEVENT_PATH}/libevent.a)
 	set_target_properties(ProviderFFMpeg
 			PROPERTIES
 			PREFIX "000" #Library load order (Requires nothink to load)

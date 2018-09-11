@@ -1,10 +1,8 @@
 #pragma once
 
-#include <experimental/filesystem>
+#include <ThreadPool/ThreadPool.h>
 #include "include/MusicPlayer.h"
-#include <sql/SqlQuery.h>
 
-namespace fs = std::experimental::filesystem;
 namespace yt {
     struct AudioInfo {
         std::string title;
@@ -17,16 +15,15 @@ namespace yt {
 
     class YTVManager {
         public:
-            explicit YTVManager(sql::SqlManager*);
+            explicit YTVManager();
             ~YTVManager();
 
             bool setup(){ return true; }
 
-            threads::Future<std::shared_ptr<AudioInfo>> downloadAudio(std::string);
-            threads::Future<std::shared_ptr<music::MusicPlayer>> playAudio(const std::string&);
+            threads::Future<std::shared_ptr<AudioInfo>> resolve_stream_info(std::string);
+            threads::Future<std::shared_ptr<music::MusicPlayer>> create_stream(const std::string &);
         private:
             threads::ThreadPool _threads{2, "YT Download"};
-            fs::path root{};
-            sql::SqlManager* sql = nullptr;
     };
+
 }

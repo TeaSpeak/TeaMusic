@@ -1,18 +1,15 @@
 #include <providers/yt/YoutubeMusicPlayer.h>
-#include <misc/pstream.h>
+#include <providers/shared/pstream.h>
 #include <json/json.h>
 #include "YTVManager.h"
 
 using namespace std;
 using namespace yt;
-using namespace sql;
 using namespace music;
 
 static const char* yt_command = "youtube-dl -v --no-check-certificate -s --print-json --get-thumbnail %s";
 
-YTVManager::YTVManager(sql::SqlManager* handle) {
-    this->sql = handle;
-    this->root = fs::u8path("yt");
+YTVManager::YTVManager() {
 }
 YTVManager::~YTVManager() {}
 
@@ -25,7 +22,7 @@ struct FMTInfo {
 };
 
 #define YTDL_DEBUG_PREFIX "[debug] "
-threads::Future<std::shared_ptr<AudioInfo>> YTVManager::downloadAudio(std::string video) {
+threads::Future<std::shared_ptr<AudioInfo>> YTVManager::resolve_stream_info(std::string video) {
     threads::Future<std::shared_ptr<AudioInfo>> future;
 
     _threads.execute([future, video](){
@@ -184,10 +181,10 @@ threads::Future<std::shared_ptr<AudioInfo>> YTVManager::downloadAudio(std::strin
     return future;
 }
 
-threads::Future<std::shared_ptr<music::MusicPlayer>> YTVManager::playAudio(const std::string& video) {
+threads::Future<std::shared_ptr<music::MusicPlayer>> YTVManager::create_stream(const std::string &video) {
     threads::Future<std::shared_ptr<music::MusicPlayer>> future;
 
-    auto fut = downloadAudio(video);
+    auto fut = resolve_stream_info(video);
     fut.waitAndGetLater([future, fut](std::shared_ptr<AudioInfo> audio){
         if(fut.succeeded() && audio) return future.executionSucceed(make_shared<music::player::YoutubeMusicPlayer>(audio));
         else return future.executionFailed(fut.errorMegssage());
