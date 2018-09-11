@@ -1,16 +1,15 @@
 #include <providers/yt/YoutubeMusicPlayer.h>
 #include <providers/shared/pstream.h>
 #include <json/json.h>
+#include <StringVariable.h>
 #include "YTVManager.h"
 
 using namespace std;
 using namespace yt;
 using namespace music;
 
-static const char* yt_command = "youtube-dl -v --no-check-certificate -s --print-json --get-thumbnail %s";
+YTVManager::YTVManager(const std::shared_ptr<YTProviderConfig>& cfg) : config(cfg) { }
 
-YTVManager::YTVManager() {
-}
 YTVManager::~YTVManager() {}
 
 static const char* audio_prefer_codec_queue[] = {"opus", "vorbis", "mp4a.40.2", "none", nullptr};
@@ -25,17 +24,20 @@ struct FMTInfo {
 threads::Future<std::shared_ptr<AudioInfo>> YTVManager::resolve_stream_info(std::string video) {
     threads::Future<std::shared_ptr<AudioInfo>> future;
 
-    _threads.execute([future, video](){
-	    /* Execute the command */
-        auto cmdBufferLength = strlen(yt_command) + video.length();
-        char cmdBuffer[cmdBufferLength];
-        sprintf(cmdBuffer, yt_command, video.c_str());
-        auto command = string(cmdBuffer);
+    auto config = this->config;
+    _threads.execute([config, future, video](){
+	    redi::pstream proc;
+	    {
+	    	//video_url
+		    //command
+		    auto command = strvar::transform(config->commands.query_video,
+		    		strvar::StringValue{"command", config->youtubedl_command},
+                    strvar::StringValue{"video_url", video}
+            );
+		    music::log::log(music::log::debug, "[YT-DL] Executing video query command \"" + command + "\"");
+		    proc.open(command, redi::pstreams::pstderr | redi::pstreams::pstdin);
+	    }
 
-        music::log::log(music::log::debug, "[YT-DL] Command: " + command);
-
-        redi::pstream proc;
-        proc.open(command, redi::pstreams::pstdout | redi::pstreams::pstderr | redi::pstreams::pstdin);
         string response;
         string err;
         size_t bufferLength = 512;

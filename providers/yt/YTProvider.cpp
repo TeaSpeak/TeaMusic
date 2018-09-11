@@ -1,10 +1,14 @@
+#include <experimental/filesystem>
 #include <providers/shared/pstream.h>
+#include <StringVariable.h>
 #include "providers/shared/INIParser.h"
 #include "YoutubeMusicPlayer.h"
 #include "YTProvider.h"
+#include "YTVManager.h"
 
 using namespace std;
 using namespace music::manager;
+namespace fs = std::experimental::filesystem;
 
 yt::YTVManager* manager = nullptr;
 class YTProvider : public PlayerProvider {
@@ -34,15 +38,39 @@ class YTProvider : public PlayerProvider {
             return {"http", "https"};
         }
 
-        size_t weight(const std::string &string1) override {
-            return this->acceptString(string1) ? 100 : 0;
+        size_t weight(const std::string &url) override {
+            return this->acceptString(url) ? 100 : 0;
         }
 };
 
 std::shared_ptr<music::manager::PlayerProvider> create_provider() {
-    //youtube-dl --version
+	std::shared_ptr<yt::YTProviderConfig> config = make_shared<yt::YTProviderConfig>();
+
+	{
+		auto config_path = fs::u8path("providers/config_youtube.ini");
+		music::log::log(music::log::debug, "[YT-DL] Using config file located at " + config_path.string());
+		if(fs::exists(config_path)) {
+			INIReader ini_reader(config_path.string());
+
+			if(ini_reader.ParseError()) {
+				music::log::log(music::log::err, "[YT-DL] Could not parse config! Using default values");
+			} else {
+				config->youtubedl_command = ini_reader.Get("general", "youtubedl_command", config->youtubedl_command);
+				config->commands.version = ini_reader.Get("commands", "version", config->commands.version);
+				config->commands.query_video = ini_reader.Get("commands", "query_video", config->commands.query_video);
+				music::log::log(music::log::info, "[YT-DL] Config successfully loaded");
+			}
+		} else {
+			music::log::log(music::log::debug, "[YT-DL] Missing configuration file. Using default values");
+		}
+	}
+
     redi::pstream proc;
-    proc.open("youtube-dl --version", redi::pstreams::pstdout | redi::pstreams::pstderr | redi::pstreams::pstdin);
+	{
+		auto command = strvar::transform(config->commands.version, strvar::StringValue{"command", config->youtubedl_command});
+		music::log::log(music::log::debug, "[YT-DL] Executing versions command \"" + command + "\"");
+		proc.open(command, redi::pstreams::pstderr | redi::pstreams::pstdin);
+	}
     string json;
     string err;
     size_t bufferLength = 512;
@@ -66,9 +94,11 @@ std::shared_ptr<music::manager::PlayerProvider> create_provider() {
         music::log::log(music::log::err, "[YT-DL] How to download/install youtube-dl: https://github.com/rg3/youtube-dl/blob/master/README.md#installation");
         return nullptr;
     }
+
+    while(!json.empty() && (json.back() == '\n' || json.back() == '\r')) json.pop_back();
     music::log::log(music::log::info, "[YT-DL] Resolved youtube-dl with version " + json);
 
-    manager = new yt::YTVManager();
+    manager = new yt::YTVManager(config);
     return std::shared_ptr<YTProvider>(new YTProvider(), [](YTProvider* provider){
         if(!provider) return;
         delete provider;
