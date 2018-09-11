@@ -21,6 +21,21 @@ struct FMTInfo {
 };
 
 #define YTDL_DEBUG_PREFIX "[debug] "
+inline void filter_debug(vector<string>& lines) {
+	bool debug_notified = false;
+	for(int index = 0; index < lines.size(); index++) {
+		if(lines[index].find(YTDL_DEBUG_PREFIX) == 0) {
+			if(!debug_notified) {
+				debug_notified = true;
+				log::log(log::trace, "[YT-DL] Got command execution debug:");
+			}
+			log::log(log::trace, "[YT-DL] " + lines[index]);
+			lines.erase(lines.begin() + index);
+			index--;
+		}
+	}
+}
+
 threads::Future<std::shared_ptr<AudioInfo>> YTVManager::resolve_stream_info(std::string video) {
     threads::Future<std::shared_ptr<AudioInfo>> future;
 
@@ -35,7 +50,7 @@ threads::Future<std::shared_ptr<AudioInfo>> YTVManager::resolve_stream_info(std:
                     strvar::StringValue{"video_url", video}
             );
 		    music::log::log(music::log::debug, "[YT-DL] Executing video query command \"" + command + "\"");
-		    proc.open(command, redi::pstreams::pstderr | redi::pstreams::pstdin);
+		    proc.open(command, redi::pstreams::pstderr | redi::pstreams::pstdout);
 	    }
 
         string response;
@@ -44,7 +59,6 @@ threads::Future<std::shared_ptr<AudioInfo>> YTVManager::resolve_stream_info(std:
         char buffer[bufferLength];
         string part;
         while(!proc.rdbuf()->exited()) {
-            usleep(10);
             while(proc.out().rdbuf()->in_avail() > 0){
                 auto read = proc.out().readsome(buffer, bufferLength);
                 if(read > 0) response += string(buffer, read);
@@ -54,6 +68,7 @@ threads::Future<std::shared_ptr<AudioInfo>> YTVManager::resolve_stream_info(std:
                 auto read = proc.err().readsome(buffer, bufferLength);
                 if(read > 0) err += string(buffer, read);
             }
+	        usleep(10);
         }
 
 	    /* Parsing the response */
@@ -80,16 +95,8 @@ threads::Future<std::shared_ptr<AudioInfo>> YTVManager::resolve_stream_info(std:
 	    }
 
 	    /* Analyzing the response */
-	    bool debug_notified = false;
-	    for(const auto& entry : available_error_lines) {
-		    if(entry.find(YTDL_DEBUG_PREFIX) == 0) {
-			    if(!debug_notified) {
-				    debug_notified = true;
-				    log::log(log::trace, "[YT-DL] Got command execution debug:");
-			    }
-			    log::log(log::trace, "[YT-DL] " + entry);
-		    }
-	    }
+	    filter_debug(available_error_lines);
+	    filter_debug(available_lines);
 
 	    for(const auto& error : available_error_lines)
 		    if(error.find("ERROR") != std::string::npos) {

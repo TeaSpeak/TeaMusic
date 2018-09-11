@@ -69,7 +69,7 @@ std::shared_ptr<music::manager::PlayerProvider> create_provider() {
 	{
 		auto command = strvar::transform(config->commands.version, strvar::StringValue{"command", config->youtubedl_command});
 		music::log::log(music::log::debug, "[YT-DL] Executing versions command \"" + command + "\"");
-		proc.open(command, redi::pstreams::pstderr | redi::pstreams::pstdin);
+		proc.open(command, redi::pstreams::pstderr | redi::pstreams::pstdout);
 	}
     string json;
     string err;
