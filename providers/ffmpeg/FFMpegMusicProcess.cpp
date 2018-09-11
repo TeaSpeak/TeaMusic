@@ -1,5 +1,6 @@
 #include <map>
 #include <sstream>
+#include <StringVariable.h>
 #include "providers/shared/pstream.h"
 #include "FFMpegMusicPlayer.h"
 #include "FFMpegProvider.h"
@@ -9,9 +10,8 @@ using namespace std::chrono;
 using namespace music;
 using namespace music::player;
 
-extern std::string ffmpeg_command;
-const static char* ffmpeg_command_args = "-hide_banner -stats -i \"%1$s\" -vn -bufsize 512k -ac %2$d -ar 48000 -f s16le -acodec pcm_s16le pipe:1"; //-vn = disable video | -bufsize 512k buffer audio
-const static char* ffmpeg_command_args_seek = "-hide_banner -ss %1$s -stats -i \"%2$s\" -vn -bufsize 512k -ac %3$d -ar 48000 -f s16le -acodec pcm_s16le pipe:1"; //-vn = disable video | -bufsize 512k buffer audio
+//const static char* ffmpeg_command_args = "-hide_banner -stats -i \"%1$s\" -vn -bufsize 512k -ac %2$d -ar 48000 -f s16le -acodec pcm_s16le pipe:1"; //-vn = disable video | -bufsize 512k buffer audio
+//const static char* ffmpeg_command_args_seek = "-hide_banner -ss %1$s -stats -i \"%2$s\" -vn -bufsize 512k -ac %3$d -ar 48000 -f s16le -acodec pcm_s16le pipe:1"; //-vn = disable video | -bufsize 512k buffer audio
 //TODO Channel count variable
 
 std::string replaceString(std::string subject, const std::string& search, const std::string& replace) {
@@ -170,19 +170,20 @@ void FFMpegMusicPlayer::spawnProcess() {
     this->destroyProcess();
     this->end_reached = false;
 
+	string command;
+	{
+		//this->seekOffset
 
-	auto argumentBuffer = new char[ARGUMENT_BUFFER_LENGTH];
-	auto seek_offset = buildTime(this->seekOffset);
-	if(this->seekOffset.count() > 0) {
-		snprintf(argumentBuffer, ARGUMENT_BUFFER_LENGTH, ffmpeg_command_args_seek, seek_offset.c_str(), this->fname.c_str(), this->_channelCount);
-	} else {
-		snprintf(argumentBuffer, ARGUMENT_BUFFER_LENGTH, ffmpeg_command_args, this->fname.c_str(), this->_channelCount);
+		command = strvar::transform(this->seekOffset.count() > 0 ? FFMpegProvider::instance->configuration()->commands.playback_seek : FFMpegProvider::instance->configuration()->commands.playback,
+				strvar::StringValue{"command", FFMpegProvider::instance->configuration()->ffmpeg_command},
+		        strvar::StringValue{"path", this->fname},
+                strvar::StringValue{"channel_count", to_string(this->_channelCount)},
+                strvar::StringValue{"seek_offset", buildTime(this->seekOffset)}
+		);
 	}
-    auto cmd = ffmpeg_command + " " + string(argumentBuffer);
-	delete[] argumentBuffer;
 
-    log::log(log::debug, "[FFMPEG][" + to_string(this) + "] Executing command: " + cmd);
-    this->stream = std::make_shared<FFMpegStream>(new redi::pstream(cmd, redi::pstreams::pstdin | redi::pstreams::pstderr | redi::pstreams::pstdout));
+    log::log(log::debug, "[FFMPEG][" + to_string(this) + "] Executing command \"" + command + "\"");
+    this->stream = std::make_shared<FFMpegStream>(new redi::pstream(command, redi::pstreams::pstdin | redi::pstreams::pstderr | redi::pstreams::pstdout));
     auto self = this->stream;
     self->channels = this->_channelCount;
     log::log(log::debug, "[FFMPEG][" + to_string(this) + "] Awaiting info");
@@ -222,7 +223,7 @@ void FFMpegMusicPlayer::spawnProcess() {
 	this->stream->callback_read_error = std::bind(&FFMpegMusicPlayer::callback_read_err, this, placeholders::_1);
 	this->stream->callback_read_output = std::bind(&FFMpegMusicPlayer::callback_read_output, this, placeholders::_1);
 	this->stream->callback_end = std::bind(&FFMpegMusicPlayer::callback_end, this);
-	this->stream->enableBuffering(); //TODO buffer strategy?
+	this->stream->enableBuffering();
 }
 
 ssize_t FFMpegMusicPlayer::readInfo(std::string& result, const std::chrono::system_clock::time_point& timeout, std::string delimiter) {

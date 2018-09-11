@@ -1,3 +1,5 @@
+#include <experimental/filesystem>
+#include <StringVariable.h>
 #include "FFMpegProvider.h"
 #include "FFMpegMusicPlayer.h"
 #include "providers/shared/INIParser.h"
@@ -6,8 +8,8 @@
 using namespace std;
 using namespace std::chrono;
 using namespace music;
+namespace fs = std::experimental::filesystem;
 
-std::string ffmpeg_command = "ffmpeg";
 /**
 Build your own ffmpeg version:
  apt-get install libfrei0r-ocaml-dev
@@ -51,6 +53,7 @@ Build your own ffmpeg version:
  */
 inline pair<string, string> executeCommand(const string& cmd){
     redi::pstream proc;
+	log::log(log::debug, "[FFMPEG] Executing command \"" + cmd + "\"");
     proc.open(cmd, redi::pstreams::pstdout | redi::pstreams::pstderr);
     string in;
     string err;
@@ -101,9 +104,9 @@ inline string part(std::string& str, const std::string& deleimiter, bool invert_
 }
 
 extern void trimString(std::string &str);
-inline vector<string> available_protocols(std::string &error) {
+inline vector<string> available_protocols(const std::shared_ptr<music::FFMpegProviderConfig>& config, std::string &error) {
     error = "";
-    auto vres = executeCommand(ffmpeg_command + " -protocols");
+    auto vres = executeCommand(strvar::transform(config->commands.protocols, strvar::StringValue{"command", config->ffmpeg_command}));
 
     /* Header is print in err stream
     if(!vres.second.empty()) {
@@ -127,9 +130,9 @@ inline vector<string> available_protocols(std::string &error) {
     return resVec;
 }
 
-inline vector<string> available_fmt(std::string &error) {
+inline vector<string> available_fmt(const std::shared_ptr<music::FFMpegProviderConfig>& config, std::string &error) {
     error = "";
-    auto vres = executeCommand(ffmpeg_command + " -formats");
+    auto vres = executeCommand(strvar::transform(config->commands.formats, strvar::StringValue{"command", config->ffmpeg_command}));
 
     /* Header is print in err stream
     if(!vres.second.empty()) {
@@ -169,8 +172,33 @@ inline vector<string> available_fmt(std::string &error) {
 }
 
 std::shared_ptr<music::manager::PlayerProvider> create_provider() {
+	std::shared_ptr<music::FFMpegProviderConfig> config = make_shared<music::FFMpegProviderConfig>();
+
+	{
+		auto config_path = fs::u8path("providers/config_ffmpeg.ini");
+		music::log::log(music::log::debug, "[FFMPEG] Using config file located at " + config_path.string());
+		if(fs::exists(config_path)) {
+			INIReader ini_reader(config_path.string());
+
+			if(ini_reader.ParseError()) {
+				music::log::log(music::log::err, "[FFMPEG] Could not parse config! Using default values");
+			} else {
+				config->ffmpeg_command = ini_reader.Get("general", "ffmpeg_command", config->ffmpeg_command);
+				config->commands.version = ini_reader.Get("commands", "version", config->commands.version);
+				config->commands.protocols = ini_reader.Get("commands", "protocols", config->commands.protocols);
+				config->commands.formats = ini_reader.Get("commands", "formats", config->commands.formats);
+
+				config->commands.playback = ini_reader.Get("commands", "playback", config->commands.playback);
+				config->commands.playback_seek = ini_reader.Get("commands", "playback_seek", config->commands.playback_seek);
+				music::log::log(music::log::info, "[FFMPEG] Config successfully loaded");
+			}
+		} else {
+			music::log::log(music::log::debug, "[FFMPEG] Missing configuration file. Using default values");
+		}
+	}
+
     string error;
-    auto vres = executeCommand(ffmpeg_command + " -version");
+    auto vres = executeCommand(strvar::transform(config->commands.version, strvar::StringValue{"command", config->ffmpeg_command}));
 
     error = vres.second;
     auto in = vres.first;
@@ -187,16 +215,16 @@ std::shared_ptr<music::manager::PlayerProvider> create_provider() {
     music::log::log(music::log::info, "[FFMPEG] Resolved ffmpeg with version \"" + in.substr(0, in.find('\n')) + "\"");
 
 
-    auto provider = std::make_shared<FFMpegProvider>();
+    auto provider = std::make_shared<FFMpegProvider>(config);
 
-    auto prots = available_protocols(error);
+    auto prots = available_protocols(config, error);
     if(!error.empty()) {
         log::log(log::err, "[FFMPEG] Could not parse available protocols");
         log::log(log::err, "[FFMPEG] " + error);
     }
     provider->av_protocol = prots;
 
-    auto fmts = available_fmt(error);
+    auto fmts = available_fmt(config, error);
     if(!error.empty()) {
         log::log(log::err, "[FFMPEG] Could not parse available formats");
         log::log(log::err, "[FFMPEG] " + error);
@@ -207,7 +235,7 @@ std::shared_ptr<music::manager::PlayerProvider> create_provider() {
 }
 
 FFMpegProvider* FFMpegProvider::instance = nullptr;
-FFMpegProvider::FFMpegProvider() {
+FFMpegProvider::FFMpegProvider(const shared_ptr<FFMpegProviderConfig>& cfg) : config(cfg) {
 	FFMpegProvider::instance = this;
 	this->providerName = "FFMpeg";
 	this->providerDescription = "FFMpeg playback support";
