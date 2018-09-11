@@ -14,7 +14,7 @@ namespace yt {
     };
 
 	struct YTProviderConfig {
-		std::string youtubedl_command = "youtubedl";
+		std::string youtubedl_command = "youtube-dl";
 
 		struct {
 			std::string version = "${command} --version";
