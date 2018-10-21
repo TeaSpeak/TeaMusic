@@ -46,29 +46,6 @@ do {\
     } \
 } while(0)
 
-
-inline std::map<string, string> parseMetadata(const std::string& in){
-    std::map<string, string> result;
-
-    size_t index = 0;
-    do {
-        auto oldIndex = index;
-        index = in.find('\n', index);
-        string line = in.substr(oldIndex, index - oldIndex);
-        if(line.find_first_not_of(' ') == std::string::npos) continue; //Empty line
-
-        auto seperator = line.find_first_of(':');
-        string key = line.substr(0, seperator);
-        string value = line.substr(seperator + 1);
-        trimString(key);
-        trimString(value);
-
-        result[key] = value;
-    } while(++index != 0);
-
-    return result;
-}
-
 /**
  * @param time format: '00:03:53.50'
  * @return
@@ -141,6 +118,22 @@ inline std::string buildTime(PlayerUnits units){
 [19:43:01] [TRACE] Stream mapping:
 [19:43:01] [TRACE]   Stream #0:0 -> #0:0 (mp3 (native) -> pcm_s16le (native))
 [19:43:01] [TRACE] Press [q] to stop, [?] for help
+
+[2018-10-21 17:51:14] [DEBUG] Input #0, hls,applehttp, from 'https://cf-hls-media.sndcdn.com/playlist/Kwf':
+[2018-10-21 17:51:14] [DEBUG]   Duration: 00:16:25.32, start: 0.000000, bitrate: 0 kb/s
+[2018-10-21 17:51:14] [DEBUG]   Program 0
+[2018-10-21 17:51:14] [DEBUG]     Metadata:
+[2018-10-21 17:51:14] [DEBUG]       variant_bitrate : 0
+[2018-10-21 17:51:14] [DEBUG]     Stream #0:0: Audio: mp3, 44100 Hz, stereo, s16p, 128 kb/s
+[2018-10-21 17:51:14] [DEBUG] Output #0, s16le, to 'pipe:1':
+[2018-10-21 17:51:14] [DEBUG]   Metadata:
+[2018-10-21 17:51:14] [DEBUG]     encoder         : Lavf56.40.101
+[2018-10-21 17:51:14] [DEBUG]     Stream #0:0: Audio: pcm_s16le, 48000 Hz, stereo, s16, 1536 kb/s
+[2018-10-21 17:51:14] [DEBUG]     Metadata:
+[2018-10-21 17:51:14] [DEBUG]       encoder         : Lavc56.60.100 pcm_s16le
+[2018-10-21 17:51:14] [DEBUG] Stream mapping:
+[2018-10-21 17:51:14] [DEBUG]   Stream #0:0 -> #0:0 (mp3 (native) -> pcm_s16le (native))
+[2018-10-21 17:51:14] [DEBUG] Press [q] to stop, [?] for help
   */
 
 void FFMpegMusicPlayer::destroyProcess() {
@@ -162,6 +155,64 @@ void FFMpegMusicPlayer::destroyProcess() {
 		this->sampleOffset = 0;
 		this->bufferedSamples.clear();
 	}
+}
+
+struct MetaEntry {
+	std::string entry;
+	std::deque<std::shared_ptr<MetaEntry>> children;
+};
+
+inline std::deque<std::shared_ptr<MetaEntry>> parse_metadata(const std::string& in) {
+	std::deque<std::shared_ptr<MetaEntry>> stack;
+	stack.push_back(make_shared<MetaEntry>());
+
+	size_t index = 0;
+	do {
+		auto old_index = index;
+		index = in.find('\n', index);
+		auto line = in.substr(old_index, index - old_index);
+		{
+			size_t space = line.find_first_not_of(' ');
+			if(space == string::npos) continue;
+
+			if(space % 2 != 0) space += 1; //Round that max one up
+			auto stack_index = space / 2 + 1;
+			if(stack_index > stack.size()) {
+				log::log(log::err, "Got metadata without parent!");
+				continue;
+			}
+
+			stack.erase(stack.begin() + stack_index, stack.end());
+
+			auto entry = make_shared<MetaEntry>();
+			entry->entry = line.substr(space); //We dont want that spaces
+			stack.back()->children.push_back(entry);
+			stack.push_back(std::move(entry));
+		}
+	} while(++index != 0);
+
+	return stack.front()->children;
+}
+
+
+inline std::map<string, string> parse_metadata_map(const std::shared_ptr<MetaEntry>& tag){
+	std::map<string, string> result;
+
+	for(const auto& entry : tag->children) {
+		auto dp = entry->entry.find(':');
+		string key, value;
+		if(dp == string::npos)
+			key = entry->entry;
+		else {
+			key = entry->entry.substr(0, dp);
+			value = entry->entry.substr(dp + 1);
+		}
+		trimString(key);
+		trimString(value);
+		result[key] = value;
+	}
+
+	return result;
 }
 
 #define ARGUMENT_BUFFER_LENGTH 2048
@@ -188,34 +239,34 @@ void FFMpegMusicPlayer::spawnProcess() {
     self->channels = this->_channelCount;
     log::log(log::debug, "[FFMPEG][" + to_string(this) + "] Awaiting info");
 
+    //Press [q] to stop, [?] for help
     string info;
-    auto read = this->readInfo(info, system_clock::now() + seconds(5), "Metadata:\n");
-	PERR("Could not get metadata tag (" + this->errBuff + ")");
+    auto read = this->readInfo(info, system_clock::now() + seconds(5), "Press [q] to stop, [?] for help");
+    PERR("Could not read info!");
 
-    //Duration parsing
-    if(live_stream) {
-        read = this->readInfo(info, system_clock::now() + seconds(5), "Stream #");
-	    PERR("Could not find stream begin");
-    } else {
-        read = this->readInfo(info, system_clock::now() + seconds(5), "Duration: ");
-	    PERR("Could not find metadata");
-    }
-
-    self->metadata = parseMetadata(info);
-    log::log(log::debug, "Available metadata:");
-    for(const auto& entry : self->metadata)
-        log::log(log::info, " Key: '" + entry.first + "' Value: '" + entry.second + "'");
-
-    if(!live_stream) {
-        read = this->readInfo(info, system_clock::now() + seconds(5), ", ");
-	    PERR("Could not get duration");
-        self->duration = parseTime(info);
-        log::log(log::info, "Duration: " + info + " | " + to_string(duration_cast<seconds>(parseTime(info)).count()) + " Seconds");
-    }
-    read = this->readInfo(info, system_clock::now() + seconds(5), "Press [q] to stop, [?] for help\n");
-	PERR("Could not read junk data");
-
-    log::log(log::trace, "Parsed video/stream info for \"" + this->fname + "\". Full string:\n" + this->errHistory);
+	auto data = parse_metadata(info);
+	for(const auto& entry : data) {
+		log::log(log::trace, "Got root entry: " + entry->entry);
+		if(entry->entry.find("Input #") == 0) {
+			for(const auto& entry_data : entry->children) {
+				log::log(log::trace, "Got imput stream data: " + entry_data->entry);
+				if(entry_data->entry.find("Metadata:") == 0) {
+					self->metadata = parse_metadata_map(entry_data);
+					log::log(log::debug, "Available metadata:");
+					for(const auto& entry : self->metadata)
+						log::log(log::debug, " Key: '" + entry.first + "' Value: '" + entry.second + "'");
+				} else if(entry_data->entry.find("Duration:") == 0) { //Duration: N/A, start: 0.000000, bitrate: 128 kb/s
+					auto duration_data = entry_data->entry.substr(10);
+					auto duration = duration_data.substr(0, duration_data.find(','));
+					if(duration != "N/A") {
+						self->duration = parseTime(duration);
+						log::log(log::debug, "Parsed duration " + duration + " to " + to_string(duration_cast<seconds>(self->duration).count()) + " secodns");
+					} else
+						log::log(log::debug, "Stream does not contains a duration");
+				}
+			}
+		}
+	}
 
 	this->stream->eventBase = FFMpegProvider::instance->readerBase; //TODO pool?
 	this->stream->initializeEvents();
