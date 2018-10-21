@@ -27,7 +27,6 @@ class YTProvider : public PlayerProvider {
             return manager->create_stream(string);
         }
 
-//
         bool acceptString(const std::string &str) override {
         	auto& map = *supported_urls();
             for(const auto& entry : map)
