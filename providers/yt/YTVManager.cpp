@@ -1,7 +1,7 @@
 #include <providers/yt/YoutubeMusicPlayer.h>
 #include <providers/shared/pstream.h>
-#include <json/json.h>
 #include <StringVariable.h>
+#include <json/json.h>
 #include "YTVManager.h"
 
 using namespace std;
@@ -12,7 +12,7 @@ YTVManager::YTVManager(const std::shared_ptr<YTProviderConfig>& cfg) : config(cf
 
 YTVManager::~YTVManager() {}
 
-static const char* audio_prefer_codec_queue[] = {"opus", "vorbis", "mp4a.40.2", "none", nullptr};
+static const char* audio_prefer_codec_queue[] = {"opus", "vorbis", "mp4a.40.2", "none", ""};
 
 struct FMTInfo {
     string codec;

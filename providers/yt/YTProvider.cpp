@@ -5,12 +5,15 @@
 #include "YoutubeMusicPlayer.h"
 #include "YTProvider.h"
 #include "YTVManager.h"
+#include <regex>
 
 using namespace std;
 using namespace music::manager;
 namespace fs = std::experimental::filesystem;
 
 yt::YTVManager* manager = nullptr;
+extern std::map<std::string, std::unique_ptr<std::regex>>* supported_urls();
+
 class YTProvider : public PlayerProvider {
     public:
         YTProvider() {
@@ -24,10 +27,13 @@ class YTProvider : public PlayerProvider {
             return manager->create_stream(string);
         }
 
-
+//
         bool acceptString(const std::string &str) override {
-            if(str.find("youtube") == std::string::npos && str.find("youtu.be") == std::string::npos) return false; //https://youtu.be/j4dMnAPZu70
-            return PlayerProvider::acceptString(str);
+        	auto& map = *supported_urls();
+            for(const auto& entry : map)
+                if(std::regex_match(str, *entry.second))
+                	return true;
+            return false;
         }
 
         vector<string> availableFormats() override {
