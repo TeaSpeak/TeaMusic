@@ -34,6 +34,7 @@ namespace music {
                 ~FFMpegStream();
 
 			    bool initializeEvents();
+			    void finalize();
 
                 pstream_t* stream = nullptr;
                 size_t channels = 0;
@@ -68,6 +69,7 @@ namespace music {
 				    event_del(outEvent);
 				    event_del(errEvent);
 			    }
+
 
 		    private:
 			    void callback_read(int,bool);

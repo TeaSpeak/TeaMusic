@@ -142,7 +142,7 @@ void FFMpegMusicPlayer::destroyProcess() {
 
 		if(this->stream) {
 			this->end_reached = true;
-			if(this->stream->stream) this->stream->stream;
+			if(this->stream->stream) this->stream->finalize();
 			this->stream = nullptr;
 			this->end_reached = false;
 		}
@@ -360,16 +360,20 @@ inline bool enableNonBlock(int fd){
 }
 
 FFMpegStream::~FFMpegStream() {
+	this->finalize();
+}
+
+void FFMpegStream::finalize() {
 	if(this->stream) this->stream->rdbuf()->kill();
 	delete stream;
 	this->stream = nullptr;
 
 	if(outEvent) {
-		event_del(outEvent);
+		event_del_block(outEvent);
 		event_free(outEvent);
 	}
 	if(errEvent) {
-		event_del(errEvent);
+		event_del_block(errEvent);
 		event_free(errEvent);
 	}
 }

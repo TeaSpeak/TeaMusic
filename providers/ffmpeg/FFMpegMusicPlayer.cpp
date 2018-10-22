@@ -17,7 +17,9 @@ FFMpegMusicPlayer::FFMpegMusicPlayer(const std::string &a, bool b) : FFMpegMusic
     this->live_stream = b;
 }
 
-FFMpegMusicPlayer::~FFMpegMusicPlayer() = default;
+FFMpegMusicPlayer::~FFMpegMusicPlayer() {
+	this->destroyProcess();
+};
 
 size_t FFMpegMusicPlayer::sampleRate() {
     return 48000;
