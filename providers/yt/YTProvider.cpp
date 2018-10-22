@@ -28,11 +28,28 @@ class YTProvider : public PlayerProvider {
         }
 
         bool acceptString(const std::string &str) override {
+        	{
+        	    lock_guard lock(this->cache_lock);
+
+		        for(const auto& entry : support_cache)
+			        if(entry.first == str) return entry.second;
+            }
+
+            bool result = false;
         	auto& map = *supported_urls();
             for(const auto& entry : map)
-                if(std::regex_match(str, *entry.second))
-                	return true;
-            return false;
+                if(std::regex_match(str, *entry.second)) {
+                	result = true;
+                	break;
+                }
+
+	        {
+		        lock_guard lock(this->cache_lock);
+
+		        support_cache.push_back({str, result});
+		        while(this->support_cache.size() > 50) this->support_cache.pop_front();
+	        }
+            return result;
         }
 
         vector<string> availableFormats() override {
@@ -46,6 +63,11 @@ class YTProvider : public PlayerProvider {
         size_t weight(const std::string &url) override {
             return this->acceptString(url) ? 100 : 0;
         }
+
+	private:
+		std::mutex cache_lock;
+		std::deque<std::pair<std::string, bool>> support_cache;
+
 };
 
 std::shared_ptr<music::manager::PlayerProvider> create_provider() {
