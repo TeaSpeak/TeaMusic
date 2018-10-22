@@ -8,10 +8,13 @@
 #define DEFINE_REGEX(webside, regex) register_url(webside, regex)
 
 static void _setup_regex();
+static void _setup_regex_0();
 std::map<std::string, std::unique_ptr<std::regex>>* _supported_urls = nullptr;
 std::map<std::string, std::unique_ptr<std::regex>>* supported_urls() {
-	if(!_supported_urls)
+	if(!_supported_urls) {
 		_setup_regex();
+		_setup_regex_0();
+	}
 	return _supported_urls;
 }
 
@@ -23,6 +26,10 @@ void register_url(const std::string& name, const std::string& raw_regex) {
 	} catch(const std::regex_error& error) {
 		music::log::log(music::log::err, "[YT-DL] Failed to compile regex " + raw_regex);
 	}
+}
+
+static void _setup_regex_0() {
+	DEFINE_REGEX("youtube:truncated_id_2", R"(https?:\/\/(?:www\.)?youtube\.com\/watch\?v=([0-9A-Za-z_-]{1,12})$)"); //Original length 11, but allow one more IDK why :)
 }
 
 /*
