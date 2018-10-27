@@ -364,17 +364,31 @@ FFMpegStream::~FFMpegStream() {
 }
 
 void FFMpegStream::finalize() {
-	if(this->stream) this->stream->rdbuf()->kill();
-	delete stream;
+	unique_lock<threads::Mutex> event_lock(this->eventLock);
+	auto old_stream = this->stream;
 	this->stream = nullptr;
+	if(old_stream) {
+		event_lock.unlock();
+		old_stream->rdbuf()->kill();
+		delete old_stream;
+		event_lock.lock();
+	}
 
 	if(outEvent) {
-		event_del_block(outEvent);
-		event_free(outEvent);
+		auto old_event = this->outEvent;
+		this->outEvent = nullptr;
+		event_lock.unlock();
+		event_del_block(old_event);
+		event_free(old_event);
+		event_lock.lock();
 	}
 	if(errEvent) {
-		event_del_block(errEvent);
-		event_free(errEvent);
+		auto old_event = this->errEvent;
+		this->errEvent = nullptr;
+		event_lock.unlock();
+		event_del_block(old_event);
+		event_free(old_event);
+		event_lock.lock();
 	}
 }
 

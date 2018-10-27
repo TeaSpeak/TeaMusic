@@ -56,18 +56,18 @@ namespace music {
 
 			    void enableBuffering() {
 				    threads::MutexLock lock(this->eventLock);
-				    if(buffering) return;
-				    buffering = true;
-				    event_add(outEvent, nullptr);
-				    event_add(errEvent, nullptr);
+				    if(this->buffering) return;
+				    this->buffering = true;
+				    if(this->outEvent) event_add(this->outEvent, nullptr);
+				    if(this->errEvent) event_add(this->errEvent, nullptr);
 			    }
 
 			    void disableBuffering() {
 				    threads::MutexLock lock(this->eventLock);
-				    if(!buffering) return;
-				    buffering = false;
-				    event_del(outEvent);
-				    event_del(errEvent);
+				    if(!this->buffering) return;
+				    this->buffering = false;
+				    if(this->outEvent) event_del_noblock(this->outEvent);
+				    if(this->errEvent) event_del_noblock(this->errEvent);
 			    }
 
 
