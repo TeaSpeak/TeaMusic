@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.6)
 project(TeaMusic-Provider)
 
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11 -fpermissive -Wall -Wno-sign-compare -static-libgcc -static-libstdc++ -fPIC")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++17 -fpermissive -Wall -Wno-sign-compare -static-libgcc -static-libstdc++ -fPIC")
 set(CMAKE_INCLUDE_CURRENT_DIR ON)
 set(CMAKE_LIBRARY_OUTPUT_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/bin/providers")
 
