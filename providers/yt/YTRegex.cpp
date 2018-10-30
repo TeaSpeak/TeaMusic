@@ -10,10 +10,15 @@
 static void _setup_regex();
 static void _setup_regex_0();
 std::map<std::string, std::unique_ptr<std::regex>>* _supported_urls = nullptr;
+
+std::mutex _supported_urls_lock;
 std::map<std::string, std::unique_ptr<std::regex>>* supported_urls() {
 	if(!_supported_urls) {
-		_setup_regex();
-		_setup_regex_0();
+		std::unique_lock lock(_supported_urls_lock);
+		if(!_supported_urls) {
+			_setup_regex();
+			_setup_regex_0();
+		}
 	}
 	return _supported_urls;
 }
@@ -30,6 +35,7 @@ void register_url(const std::string& name, const std::string& raw_regex) {
 
 static void _setup_regex_0() {
 	DEFINE_REGEX("youtube:truncated_id_2", R"(https?:\/\/(?:www\.)?youtube\.com\/watch\?v=([0-9A-Za-z_-]{1,12})$)"); //Original length 11, but allow one more IDK why :)
+	DEFINE_REGEX("youtube:video_all", R"(^((?:https?:)?\/\/)?((?:www|m)\.)?((?:youtube\.com|youtu.be))(\/(?:[\w\-]+\?v=|embed\/|v\/)?)([\w\-]+)(\S+)?$)");
 }
 
 /*

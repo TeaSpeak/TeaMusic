@@ -126,6 +126,15 @@ std::shared_ptr<music::manager::PlayerProvider> create_provider() {
     music::log::log(music::log::info, "[YT-DL] Resolved youtube-dl with version " + json);
 
     manager = new yt::YTVManager(config);
+
+    std::thread([] { /* compile regex patterns (async) */
+	    music::log::log(music::log::err, "[YT-DL] Compiling patterns");
+	    auto begin = chrono::system_clock::now();
+	    supported_urls();
+	    auto end = chrono::system_clock::now();
+	    music::log::log(music::log::err, "[YT-DL] Patterns compiled (" + to_string(chrono::duration_cast<chrono::microseconds>(end - begin).count()) + "ms)");
+    }).detach();
+
     return std::shared_ptr<YTProvider>(new YTProvider(), [](YTProvider* provider){
         if(!provider) return;
         delete provider;
