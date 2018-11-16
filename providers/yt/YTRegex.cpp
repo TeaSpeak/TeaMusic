@@ -7,6 +7,17 @@
 
 #define DEFINE_REGEX(webside, regex) register_url(webside, regex)
 
+/* they dont work and we know that so ignore them :D */
+std::deque<std::string> _regex_ignore = {
+		"NYTimesArticle",
+		"KhanAcademy",
+		"Sohu",
+		"youtube",
+		"tagesschau",
+		"tagesschau:player",
+		"vidme"
+};
+
 static void _setup_regex();
 static void _setup_regex_0();
 std::map<std::string, std::unique_ptr<std::regex>>* _supported_urls = nullptr;
@@ -27,9 +38,15 @@ void register_url(const std::string& name, const std::string& raw_regex) {
 	if(!_supported_urls)
 		_supported_urls = new std::map<std::string, std::unique_ptr<std::regex>>();
 	try {
+		for(const auto& ignore : _regex_ignore) {
+			if(name == ignore) {
+				music::log::log(music::log::trace, "[YT-DL]  Ignoring regex for " + name);
+				return;
+			}
+		}
 		(*_supported_urls)[name] = std::make_unique<std::regex>(raw_regex, std::regex::icase | std::regex::ECMAScript);
 	} catch(const std::regex_error& error) {
-		music::log::log(music::log::err, "[YT-DL] Failed to compile regex " + raw_regex);
+		music::log::log(music::log::err, "[YT-DL] Failed to compile regex for " + name + ": " + raw_regex);
 	}
 }
 
