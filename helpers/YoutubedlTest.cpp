@@ -1,7 +1,7 @@
 #include <iostream>
-#include <log/LogUtils.h>
 #include <CXXTerminal/Terminal.h>
 #include "providers/yt/YTProvider.h"
+#include "../../shared/src/log/LogUtils.h"
 
 using namespace std;
 int main() {
