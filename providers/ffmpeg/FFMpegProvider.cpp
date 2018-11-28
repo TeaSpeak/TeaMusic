@@ -83,9 +83,47 @@ inline pair<string, string> executeCommand(const string& cmd){
     return {in, err};
 };
 
-threads::Future<std::shared_ptr<music::MusicPlayer>> FFMpegProvider::createPlayer(const std::string &string) {
-    auto player = std::make_shared<music::player::FFMpegMusicPlayer>(string);
-    auto future = threads::Future<std::shared_ptr<music::MusicPlayer>>();
+threads::Future<std::shared_ptr<music::MusicPlayer>> FFMpegProvider::createPlayer(const std::string &url, void* custom_data, void*) {
+	auto future = threads::Future<std::shared_ptr<music::MusicPlayer>>();
+
+	//custom_data
+	std::shared_ptr<music::MusicPlayer> player;
+	if(!custom_data) {
+		player = std::make_shared<music::player::FFMpegMusicPlayer>(url);
+	} else {
+		std::shared_ptr<FFMpegData::Header> data;
+		{
+			void(*free_ptr)(void*) = nullptr;
+			auto header = (FFMpegData::Header*) custom_data;
+
+			/* file the free function */
+			free_ptr = header->_free;
+			if(!free_ptr)
+				free_ptr = ::free;
+			header->_free = free_ptr;
+
+			data = shared_ptr<FFMpegData::Header>(header, free_ptr);
+		}
+		if(!data || data->version != 1) {
+			future.executionFailed("invalid data or version");
+			return future;
+		}
+		if(data->type == FFMpegData::REPLAY_FILE) {
+			auto cast_data = static_pointer_cast<FFMpegData::FileReplay>(data);
+			player = std::make_shared<music::player::FFMpegMusicPlayer>(string(cast_data->file_path));
+
+			/* free content */
+			cast_data->_free(cast_data->file_description);
+			cast_data->_free(cast_data->file_path);
+		} else {
+			future.executionFailed("invalid data type");
+			return future;
+		}
+	}
+	if(!player) {
+		future.executionFailed("could not create a valid player");
+		return future;
+	}
     future.executionSucceed(std::dynamic_pointer_cast<music::MusicPlayer>(player));
     return future;
 }

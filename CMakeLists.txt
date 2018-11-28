@@ -17,6 +17,8 @@ if(NOT EXISTS ../shared/src/)
 	set(LIBRARY_PATH_VARIBALES "StringVariablesStatic")
 endif()
 
+include_directories(include)
+
 if (BUILD_PROVIDER_YT)
 	message("Building YouTube provider")
 	add_library(ProviderYT SHARED ${HEADERS} providers/yt/YTProvider.cpp providers/yt/YTVManager.cpp providers/yt/YoutubeMusicPlayer.cpp providers/yt/YTRegex.cpp)

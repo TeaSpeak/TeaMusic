@@ -44,22 +44,21 @@ namespace music {
          * char length : channels * segmentLength * sizeof(s16le)
          * Encoding    : s16le
          */
-        mutable int16_t* segments = nullptr;
+        mutable int16_t* segments;
 	    const size_t maxSegmentLength = 0;
 	    const size_t channels = 0;
         size_t segmentLength = 0;
-
         bool full = false;
 
-	    SampleSegment(int16_t *segments, const size_t maxSegmentLength, const size_t channels) : segments(segments), maxSegmentLength(maxSegmentLength), channels(channels) {}
 
-	    ~SampleSegment(){
-            if(segments) free((void *) segments);
-        }
+	    SampleSegment(int16_t *segments, const size_t maxSegmentLength, const size_t channels) : segments(segments), maxSegmentLength(maxSegmentLength), channels(channels) {}
+	    virtual ~SampleSegment(){ }
 
 	    inline static std::shared_ptr<SampleSegment> allocate(size_t maxSamples, size_t channels) {
-		    auto buffer = (int16_t*) malloc(maxSamples * channels * sizeof(int16_t));
-			return std::make_shared<SampleSegment>(buffer, maxSamples, channels);
+	    	auto memory = malloc(maxSamples * channels * sizeof(int16_t) + sizeof(SampleSegment));
+	    	new(memory) SampleSegment((int16_t*) ((char*) memory + sizeof(SampleSegment)), maxSamples, channels);
+
+	    	return std::shared_ptr<SampleSegment>((SampleSegment*) memory);
 	    }
     };
 
@@ -222,7 +221,7 @@ namespace music {
             std::string providerName;
             std::string providerDescription;
 
-            virtual threads::Future<std::shared_ptr<MusicPlayer>> createPlayer(const std::string&) = 0;
+            virtual threads::Future<std::shared_ptr<MusicPlayer>> createPlayer(const std::string& /* url */, void* /* custom data */, void* /* internal use */) = 0;
             virtual std::vector<std::string> availableFormats() = 0;
             virtual std::vector<std::string> availableProtocols() = 0;
 
@@ -258,6 +257,7 @@ namespace music {
 
         //empty for not set
         extern std::shared_ptr<PlayerProvider> resolveProvider(const std::string& provName, const std::string& str);
+
         template <typename T>
         inline std::deque<std::shared_ptr<PlayerProvider>> resolveProvider(){
             std::deque<std::shared_ptr<PlayerProvider>> result;
@@ -268,6 +268,7 @@ namespace music {
         }
 
         extern void loadProviders(const std::string&);
+	    extern void register_provider(const std::shared_ptr<PlayerProvider>&);
     };
 }
 

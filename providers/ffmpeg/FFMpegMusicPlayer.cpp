@@ -116,13 +116,14 @@ std::shared_ptr<SampleSegment> FFMpegMusicPlayer::popNextSegment() {
 }
 
 extern void trimString(std::string&);
-const static std::regex timeline_regex = []() -> std::regex {
+
+const static auto property_regex = []() -> std::shared_ptr<std::regex> {
 	try {
-		return std::regex(R"([ ]{0,}size=[ ]+[0-9]+kB[ ]+time=[0-9]+:[0-9]{2}:[0-9]{2}(\.[0-9]+)?[ ]+bitrate=[0-9]+(\.[0-9]+)kbits/s[^\x00]+)");
+		return make_shared<std::regex>(R"((size|time|bitrate|speed)=([ \t]+)?([a-zA-Z0-9\:\.\,\/]+)[ \t]+)");
 	} catch (std::exception& ex) {
-		log::log(log::err, "[FFMPEG] Could not compile timeline regex!");
-		return std::regex("");
+		log::log(log::err, "[FFMPEG] Could not compile property regex!");
 	}
+	return nullptr;
 }();
 
 void FFMpegMusicPlayer::callback_read_err(const std::string& constBuffer) {
@@ -136,7 +137,21 @@ void FFMpegMusicPlayer::callback_read_err(const std::string& constBuffer) {
 
 	bool error_send = false;
 	for(const auto& line : lines) {
-		if(std::regex_match(line, timeline_regex)) continue;
+		if(property_regex) {
+			auto properties_begin = std::sregex_iterator(line.begin(), line.end(), *property_regex);
+			auto properties_end = std::sregex_iterator();
+			if(properties_begin != properties_end) {
+				log::log(log::trace, "[FFMPEG][" + to_string(this) + "] Got " + to_string(std::distance(properties_begin, properties_end)) + " property values on err stream. (Attention: These properties may differ with the known expected properties!)");
+				for(auto index = properties_begin; index != properties_end; index++) {
+					if(index->length() < 3) {
+						log::log(log::trace, "[FFMPEG][" + to_string(this) + "] - <invalid group size for \"" + index->str() + "\">");
+						continue;
+					}
+					log::log(log::trace, "[FFMPEG][" + to_string(this) + "] - " + index->operator[](1).str() + " => " + index->operator[](3).str());
+				}
+				continue;
+			}
+		}
 		if(!error_send) {
 			log::log(log::err, "[FFMPEG][" + to_string(this) + "] Got error message from FFMpeg:");
 			error_send = true;

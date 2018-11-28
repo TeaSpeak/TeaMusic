@@ -1,4 +1,4 @@
-#include <include/MusicPlayer.h>
+#include <MusicPlayer.h>
 #include <event.h>
 #include <sstream>
 #include <memory>

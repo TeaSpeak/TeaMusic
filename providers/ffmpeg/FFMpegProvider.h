@@ -1,6 +1,6 @@
 #pragma once
 
-#include <include/MusicPlayer.h>
+#include <MusicPlayer.h>
 #include <event.h>
 #include <string>
 
@@ -22,6 +22,25 @@ namespace music {
 		} commands;
 	};
 
+	struct FFMpegData {
+		static constexpr int CURRENT_VERSION = 1 ;
+		enum Type : uint8_t {
+			UNDEFINED,
+			REPLAY_FILE
+		};
+
+		struct Header {
+			int version = 1;
+			void(*_free)(void*) = nullptr;      /* default will be free(...); Will be used as well for this struct */
+			Type type;
+		};
+
+		struct FileReplay : public Header {
+			char* file_path;                    /* will be freed via _free */
+			char* file_description;             /* will be freed via _free */
+		};
+	};
+
     class FFMpegProvider : public music::manager::PlayerProvider {
 	    public:
 		    static FFMpegProvider* instance;
@@ -29,7 +48,7 @@ namespace music {
             FFMpegProvider(const std::shared_ptr<FFMpegProviderConfig>& /* config */);
             virtual ~FFMpegProvider();
 
-            threads::Future<std::shared_ptr<music::MusicPlayer>> createPlayer(const std::string &string) override;
+            threads::Future<std::shared_ptr<music::MusicPlayer>> createPlayer(const std::string &, void*, void*) override;
 
             std::vector<std::string> availableFormats() override {
                 return av_fmt;
