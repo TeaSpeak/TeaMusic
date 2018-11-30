@@ -58,7 +58,7 @@ namespace music {
 	    	auto memory = malloc(maxSamples * channels * sizeof(int16_t) + sizeof(SampleSegment));
 	    	new(memory) SampleSegment((int16_t*) ((char*) memory + sizeof(SampleSegment)), maxSamples, channels);
 
-	    	return std::shared_ptr<SampleSegment>((SampleSegment*) memory);
+	    	return std::shared_ptr<SampleSegment>((SampleSegment*) memory, ::free);
 	    }
     };
 
