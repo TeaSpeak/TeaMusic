@@ -260,7 +260,7 @@ void FFMpegMusicPlayer::spawnProcess() {
 					auto duration = duration_data.substr(0, duration_data.find(','));
 					if(duration != "N/A") {
 						self->duration = parseTime(duration);
-						log::log(log::debug, "Parsed duration " + duration + " to " + to_string(duration_cast<seconds>(self->duration).count()) + " secodns");
+						log::log(log::debug, "Parsed duration " + duration + " to " + to_string(duration_cast<seconds>(self->duration).count()) + " seconds");
 					} else
 						log::log(log::debug, "Stream does not contains a duration");
 				}
