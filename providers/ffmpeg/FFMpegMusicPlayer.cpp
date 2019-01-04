@@ -120,7 +120,7 @@ extern void trimString(std::string&);
 //video:0kB audio:5644kB subtitle:0kB other streams:0kB global headers:0kB muxing overhead: 0.000000%
 const static auto property_regex = []() -> std::shared_ptr<std::regex> {
 	try {
-		return make_shared<std::regex>(R"((size|time|bitrate|speed)=([ \t]+)?([a-zA-Z0-9\:\.\,\/]+%)[ \t]+)");
+		return make_shared<std::regex>(R"((size|time|bitrate|speed)=([ \t]+)?([a-zA-Z0-9\:\.\,\/%]+)([ \t]+)?)");
 	} catch (std::exception& ex) {
 		log::log(log::err, "[FFMPEG] Could not compile property regex!");
 	}
@@ -148,6 +148,8 @@ void FFMpegMusicPlayer::callback_read_err(const std::string& constBuffer) {
 
 	bool error_send = false;
 	for(const auto& line : lines) {
+		if(line.find_first_not_of(" \n\t\r") == string::npos && !error_send) continue;
+
 		if(property_regex) {
 			auto properties_begin = std::sregex_iterator(line.begin(), line.end(), *property_regex);
 			auto properties_end = std::sregex_iterator();
