@@ -170,7 +170,7 @@ void FFMpegMusicPlayer::callback_read_err(const std::string& constBuffer) {
 			auto stats_end = std::sregex_iterator();
 			if(stats_begin != stats_end) {
 				log::log(log::trace, "[FFMPEG][" + to_string(this) + "] Got " + to_string(std::distance(stats_begin, stats_end)) + " status values on err stream. (Attention: These properties may differ with the known expected stats!)");
-				for(auto index = stats_end; index != stats_end; index++) {
+				for(auto index = stats_begin; index != stats_end; index++) {
 					if(index->length() < 5) {
 						log::log(log::trace, "[FFMPEG][" + to_string(this) + "] - <invalid group size for \"" + index->str() + "\">");
 						continue;
