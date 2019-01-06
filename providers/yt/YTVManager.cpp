@@ -2,6 +2,7 @@
 #include <providers/shared/pstream.h>
 #include <StringVariable.h>
 #include <json/json.h>
+#include <memory>
 #include "YTVManager.h"
 
 using namespace std;
@@ -128,19 +129,19 @@ threads::Future<std::shared_ptr<music::UrlInfo>> YTVManager::resolve_url_info(st
 		    return;
 	    }
 
-	    deque<Json::Value> jsons;
+	    deque<unique_ptr<Json::Value>> jsons;
 	    for(const auto& line : available_lines) {
 	    	if(line.empty() || line[0] != '{') {
 			    log::log(log::trace, "[YT-DL][Query] Invalid query line \"" + line + "\". Skip parsing");
 			    continue;
 	    	}
 
-		    Json::Value root;
+		    auto root = make_unique<Json::Value>();
 		    Json::CharReaderBuilder rbuilder;
 		    std::string errs;
 
-		    istringstream jsonStream(available_lines[available_lines.size() - 1]);
-		    bool parsingSuccessful = Json::parseFromStream(rbuilder, jsonStream, &root, &errs);
+		    istringstream jsonStream(line);
+		    bool parsingSuccessful = Json::parseFromStream(rbuilder, jsonStream, &*root, &errs);
 		    if (!parsingSuccessful) {
 			    log::log(log::trace, "[YT-DL][Query] Invalid query line \"" + line + "\". Failed to parse json: " + errs);
 			    continue;
@@ -153,7 +154,7 @@ threads::Future<std::shared_ptr<music::UrlInfo>> YTVManager::resolve_url_info(st
 	    if(jsons.empty()) {
 		    future.executionFailed("no result");
 	    } else if(jsons.size() == 1) {
-	    	auto root = move(jsons.front());
+	    	auto root = *jsons.front();
 		    log::log(log::trace, "[YT-DL][Query] Query for URL " + video + " seems like an video.");
 
 		    auto info = make_shared<UrlSongInfo>();
@@ -164,24 +165,24 @@ threads::Future<std::shared_ptr<music::UrlInfo>> YTVManager::resolve_url_info(st
 		    info->metadata["upload_date"] = root["upload_date"].asString();
 		    info->metadata["live"] = std::to_string(!root["is_live"].isNull() && root["is_live"].asBool());
 
-		    if(root["thumbnail"].isArray() && root["thumbnail"].size() > 0)
+		    if(root["thumbnail"].isArray() && !root["thumbnail"].empty())
 		        info->metadata["thumbnail"] = root["thumbnail"][0]["url"].asString();
 
 		    future.executionSucceed(info);
 		    return;
 	    } else {
-	    	if(jsons[0]["requested_formats"].isArray()) {
+	    	if((*jsons[0])["requested_formats"].isArray()) {
 			    future.executionFailed("playlist isnt a playlist format");
 			    return;
 	    	}
-
 
 		    auto info = make_shared<UrlPlaylistInfo>();
 	        info->type = UrlType::TYPE_PLAYLIST;
 	        info->url = video;
 
 	        size_t entry_id = 0;
-	        for(const auto& json : jsons) {
+	        for(const auto& json_ptr : jsons) {
+	        	Json::Value& json = *json_ptr;
 	        	auto entry = make_shared<UrlSongInfo>();
 	        	entry->url = "https://www.youtube.com/watch?v=" + json["id"].asString();
 	        	entry->title = json["title"].asString();
@@ -218,7 +219,7 @@ threads::Future<std::shared_ptr<AudioInfo>> YTVManager::resolve_stream_info(std:
 		{
 			//video_url
 			//command
-			auto command = strvar::transform(config->commands.query_url,
+			auto command = strvar::transform(config->commands.query_video,
                          strvar::StringValue{"command", config->youtubedl_command},
                          strvar::StringValue{"video_url", video}
 			);
