@@ -147,6 +147,7 @@ void FFMpegMusicPlayer::callback_read_err(const std::string& constBuffer) {
 	}
 
 	bool error_send = false;
+	bool output_stream = false;
 	for(const auto& line : lines) {
 		if(line.find_first_not_of(" \n\t\r") == string::npos && !error_send) continue;
 
@@ -180,6 +181,15 @@ void FFMpegMusicPlayer::callback_read_err(const std::string& constBuffer) {
 				continue;
 			}
 		}
+		if(line.find("Output #") == 0) {
+			output_stream = true;
+			continue;
+		}
+		if(output_stream && line.find("  ") == 0)
+			continue;
+		else
+			output_stream = false;
+
 		if(!error_send) {
 			log::log(log::err, "[FFMPEG][" + to_string(this) + "] Got error message from FFMpeg:");
 			error_send = true;

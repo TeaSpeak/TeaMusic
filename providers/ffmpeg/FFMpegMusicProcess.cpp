@@ -239,7 +239,16 @@ void FFMpegMusicPlayer::spawnProcess() {
     self->channels = this->_channelCount;
     log::log(log::debug, "[FFMPEG][" + to_string(this) + "] Awaiting info");
 
-    //Press [q] to stop, [?] for help
+    /*
+     * Structure:
+     * Input #<id>, <data>:
+     *  <data>
+     * Stream mapping:
+     *  <data>
+     * Press [q] to stop, [?] for help
+     * Output #<id>, <data>:
+     *  <data>
+     */
     string info;
     auto read = this->readInfo(info, system_clock::now() + seconds(5), "Press [q] to stop, [?] for help");
     PERR("Could not read info!");
@@ -265,6 +274,11 @@ void FFMpegMusicPlayer::spawnProcess() {
 						log::log(log::debug, "Stream does not contains a duration");
 				}
 			}
+		} else if(entry->entry.find("Stream mapping") == 0) { }
+		else if(entry->entry.find("Press [q]") == 0) { }
+		else if(entry->entry.find("Output #") == 0) { }
+		else {
+			log::log(log::debug, "Got unknown root entry: " + entry->entry);
 		}
 	}
 
