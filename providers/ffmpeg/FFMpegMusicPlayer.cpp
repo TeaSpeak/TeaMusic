@@ -117,26 +117,40 @@ std::shared_ptr<SampleSegment> FFMpegMusicPlayer::popNextSegment() {
 
 extern void trimString(std::string&);
 
+//video:0kB audio:5644kB subtitle:0kB other streams:0kB global headers:0kB muxing overhead: 0.000000%
 const static auto property_regex = []() -> std::shared_ptr<std::regex> {
 	try {
-		return make_shared<std::regex>(R"((size|time|bitrate|speed)=([ \t]+)?([a-zA-Z0-9\:\.\,\/]+)[ \t]+)");
+		return make_shared<std::regex>(R"((size|time|bitrate|speed)=([ \t]+)?([a-zA-Z0-9\:\.\,\/%]+)([ \t]+)?)");
 	} catch (std::exception& ex) {
 		log::log(log::err, "[FFMPEG] Could not compile property regex!");
+	}
+	return nullptr;
+}();
+const static auto stats_regex = []() -> std::shared_ptr<std::regex> {
+	try {
+		return make_shared<std::regex>(R"((video|audio|subtitle|other|streams|global|headers|muxing|overhead)(:( +)?([a-zA-Z0-9\:\.\,\/%]+))?( +)?)");
+	} catch (std::exception& ex) {
+		log::log(log::err, "[FFMPEG] Could not compile stats regex!");
 	}
 	return nullptr;
 }();
 
 void FFMpegMusicPlayer::callback_read_err(const std::string& constBuffer) {
 	deque<string> lines;
-	size_t index = 0;
-	do {
-		auto found = constBuffer.find('\n', index);
-		lines.push_back(constBuffer.substr(index, found - index));
-		index = found + 1;
-	} while(index != 0);
+	{
+		size_t index = 0;
+		do {
+			auto found = constBuffer.find('\n', index);
+			lines.push_back(constBuffer.substr(index, found - index));
+			index = found + 1;
+		} while(index != 0);
+	}
 
 	bool error_send = false;
+	bool output_stream = false;
 	for(const auto& line : lines) {
+		if(line.find_first_not_of(" \n\t\r") == string::npos && !error_send) continue;
+
 		if(property_regex) {
 			auto properties_begin = std::sregex_iterator(line.begin(), line.end(), *property_regex);
 			auto properties_end = std::sregex_iterator();
@@ -152,11 +166,35 @@ void FFMpegMusicPlayer::callback_read_err(const std::string& constBuffer) {
 				continue;
 			}
 		}
+		if(stats_regex) {
+			auto stats_begin = std::sregex_iterator(line.begin(), line.end(), *stats_regex);
+			auto stats_end = std::sregex_iterator();
+			if(stats_begin != stats_end) {
+				log::log(log::trace, "[FFMPEG][" + to_string(this) + "] Got " + to_string(std::distance(stats_begin, stats_end)) + " status values on err stream. (Attention: These properties may differ with the known expected stats!)");
+				for(auto index = stats_begin; index != stats_end; index++) {
+					if(index->length() < 5) {
+						log::log(log::trace, "[FFMPEG][" + to_string(this) + "] - <invalid group size for \"" + index->str() + "\">");
+						continue;
+					}
+					log::log(log::trace, "[FFMPEG][" + to_string(this) + "] - " + index->operator[](1).str() + " => " + index->operator[](4).str());
+				}
+				continue;
+			}
+		}
+		if(line.find("Output #") == 0) {
+			output_stream = true;
+			continue;
+		}
+		if(output_stream && line.find("  ") == 0)
+			continue;
+		else
+			output_stream = false;
+
 		if(!error_send) {
 			log::log(log::err, "[FFMPEG][" + to_string(this) + "] Got error message from FFMpeg:");
 			error_send = true;
 		}
-		log::log(log::err, "[FFMPEG][" + to_string(this) + "] " + constBuffer);
+		log::log(log::err, "[FFMPEG][" + to_string(this) + "] " + line);
 	}
 }
 

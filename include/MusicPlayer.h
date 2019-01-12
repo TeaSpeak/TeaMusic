@@ -87,6 +87,28 @@ namespace music {
 			std::string _url;
 	};
 
+	enum UrlType {
+		TYPE_VIDEO,
+		TYPE_STREAM,
+		TYPE_PLAYLIST
+	};
+
+	struct UrlInfo {
+		UrlType type;
+		std::string url;
+	};
+
+	struct UrlSongInfo : public UrlInfo {
+		std::string title;
+		std::string description;
+
+		std::map<std::string, std::string> metadata;
+	};
+
+	struct UrlPlaylistInfo : public UrlInfo {
+		std::deque<std::shared_ptr<UrlSongInfo>> entries;
+	};
+
     enum PlayerState {
         STATE_UNINIZALISIZED,
         STATE_PLAYING,
@@ -220,6 +242,8 @@ namespace music {
         struct PlayerProvider {
             std::string providerName;
             std::string providerDescription;
+
+            virtual threads::Future<std::shared_ptr<UrlInfo>> query_info(const std::string& /* url */, void* /* custom data */, void* /* internal use */) = 0;
 
             virtual threads::Future<std::shared_ptr<MusicPlayer>> createPlayer(const std::string& /* url */, void* /* custom data */, void* /* internal use */) = 0;
             virtual std::vector<std::string> availableFormats() = 0;

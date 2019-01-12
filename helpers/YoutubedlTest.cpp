@@ -15,6 +15,14 @@ int main() {
 	auto provider = create_provider();
 	assert(provider);
 
+	auto info = provider->query_info("https://www.youtube.com/watch?list=PLOHoVaTp8R7d3L_pjuwIa6nRh4tH5nI4x", nullptr, nullptr);
+	auto data = static_pointer_cast<music::UrlPlaylistInfo>(info.waitAndGet(nullptr));
+	if(info.failed())
+		logMessage("Failed message: " + info.errorMegssage());
+
+	__asm__("nop");
+
+	/*
 	auto player = provider->createPlayer("https://www.youtube.com/watch?v=Bu3kAbpi5jo").waitAndGet(nullptr);
 	assert(player);
 
@@ -25,4 +33,6 @@ int main() {
 		if(thumbnail->type() == music::THUMBNAIL_URL)
 			logMessage(" Thumbnail URL : " + static_pointer_cast<music::ThumbnailUrl>(thumbnail)->url());
 	}
+	 */
+	return 0;
 }

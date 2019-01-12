@@ -306,3 +306,17 @@ FFMpegProvider::~FFMpegProvider() {
         event_base_free(base);
     }
 }
+
+threads::Future<shared_ptr<UrlInfo>> FFMpegProvider::query_info(const std::string &string, void *pVoid, void *pVoid1) {
+	auto info = make_shared<UrlSongInfo>();
+
+	info->type = UrlType::TYPE_VIDEO;
+	info->url = string;
+	info->title = "";
+	info->description = "";
+	info->metadata = {};
+
+	threads::Future<shared_ptr<UrlInfo>> result;
+	result.executionSucceed(info);
+	return result;
+}

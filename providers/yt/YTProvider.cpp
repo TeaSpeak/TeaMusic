@@ -23,7 +23,11 @@ class YTProvider : public PlayerProvider {
 
         virtual ~YTProvider() = default;
 
-        threads::Future<std::shared_ptr<music::MusicPlayer>> createPlayer(const std::string &string, void*, void*) override {
+		threads::Future<shared_ptr<music::UrlInfo>> query_info(const std::string &url, void *pVoid, void *pVoid1) override {
+			return manager->resolve_url_info(url);
+		}
+
+		threads::Future<std::shared_ptr<music::MusicPlayer>> createPlayer(const std::string &string, void*, void*) override {
             return manager->create_stream(string);
         }
 
