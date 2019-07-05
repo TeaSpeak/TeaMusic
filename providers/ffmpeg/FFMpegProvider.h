@@ -64,7 +64,7 @@ namespace music {
             std::vector<std::string> av_fmt;
 
             event_base* readerBase = nullptr;
-		    threads::Thread* readerDispatch = nullptr;
+		    std::thread readerDispatch;
 
 		    inline std::shared_ptr<FFMpegProviderConfig> configuration() { return this->config; }
     	private:

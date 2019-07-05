@@ -279,13 +279,15 @@ FFMpegProvider::FFMpegProvider(const shared_ptr<FFMpegProviderConfig>& cfg) : co
 	this->providerDescription = "FFMpeg playback support";
 
 	this->readerBase = event_base_new();
-	this->readerDispatch = new threads::Thread(THREAD_EXECUTE_LATER | THREAD_SAVE_OPERATIONS, [&](){
-		while(this->readerBase) {
-			event_base_dispatch(this->readerBase);
-			threads::self::sleep_for(milliseconds(10)); //Dont have somethink to do
-		}
+	this->readerDispatch = std::thread([&]{
+		while(this->readerBase)
+			event_base_loop(this->readerBase, EVLOOP_NO_EXIT_ON_EMPTY);
 	});
-	this->readerDispatch->name("FFMpeg IO").execute();
+
+#if defined (__unix__) || (defined (__APPLE__) && defined (__MACH__))
+	pthread_t handle = this->readerDispatch.native_handle();
+	pthread_setname_np(handle, "FFMPeg IO Loop");
+#endif
 }
 
 FFMpegProvider::~FFMpegProvider() {
@@ -297,11 +299,13 @@ FFMpegProvider::~FFMpegProvider() {
         event_base_loopbreak(base);
         event_base_loopexit(base, nullptr);
 
-        if(this->readerDispatch) {
-            if(!this->readerDispatch->join(system_clock::now() + seconds(3))) this->readerDispatch->detach();
-            delete this->readerDispatch;
-            this->readerDispatch = nullptr;
-        }
+        if(this->readerDispatch.joinable())
+        	try {
+        		this->readerDispatch.join();
+        	} catch(std::system_error& ex) {
+        		if(ex.code() != errc::invalid_argument) /* exception is not about that the thread isn't joinable anymore */
+        			throw;
+        	}
 
         event_base_free(base);
     }
