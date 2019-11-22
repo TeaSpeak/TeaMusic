@@ -52,7 +52,7 @@ namespace music {
 
 
 	    SampleSegment(int16_t *segments, const size_t maxSegmentLength, const size_t channels) : segments(segments), maxSegmentLength(maxSegmentLength), channels(channels) {}
-	    virtual ~SampleSegment(){ }
+	    ~SampleSegment() = default;
 
 	    inline static std::shared_ptr<SampleSegment> allocate(size_t maxSamples, size_t channels) {
 	    	auto memory = malloc(maxSamples * channels * sizeof(int16_t) + sizeof(SampleSegment));
@@ -292,6 +292,7 @@ namespace music {
         }
 
         extern void loadProviders(const std::string&);
+	    extern void finalizeProviders();
 	    extern void register_provider(const std::shared_ptr<PlayerProvider>&);
     };
 }
