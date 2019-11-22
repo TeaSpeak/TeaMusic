@@ -1,4 +1,6 @@
 #include <experimental/filesystem>
+#include <utility>
+#include <event2/thread.h>
 #include <StringVariable.h>
 #include "FFMpegProvider.h"
 #include "FFMpegMusicPlayer.h"
@@ -10,47 +12,6 @@ using namespace std::chrono;
 using namespace music;
 namespace fs = std::experimental::filesystem;
 
-/**
-Build your own ffmpeg version:
- apt-get install libfrei0r-ocaml-dev
- apt-get install libgnutls-dev
- apt-get install libiec61883-dev
- apt-get install libass-dev
- apt-get install libbluray-dev
- apt-get install libbs2b-dev
- apt-get install libcaca-dev
- apt-get install libdc1394-22-dev
- apt-get install flite-dev
- apt-get install libgme-dev
- apt-get install libgsm1-dev
- apt-get install libmodplug-dev
- apt-get install libmp3lame-dev
- apt-get install libopencv-dev
- apt-get install libopenjpeg-dev
- apt-get install libopus-dev (Requires 1.2.1)
- apt-get install libpulse-dev
- apt-get install librtmp-dev
- apt-get install libshine-dev
- apt-get install libsoxr-dev
- apt-get install libssh-dev
- apt-get install libspeex-dev
- apt-get install libtheora-dev
- apt-get install libtwolame-dev
- apt-get install libvorbis-dev
- apt-get install libvpx-dev
- apt-get install libwavpack-dev
- apt-get install libwebp-dev
- apt-get install libx264-dev
- apt-get install libx265-dev
- apt-get install libxvidcore-dev
- apt-get install libzmq3-dev
- apt-get install libzvbi-dev
- apt-get install libopenal-dev
- apt-get install libcdio-dev (No usable libcdio/cdparanoia found)
- apt-get install libcdio-paranoia-dev
-
-../configure --cc=cc --cxx=g++ --extra-cflags="-I/usr/include/opus" --extra-ldflags=-lopus --enable-gpl --enable-nonfree --disable-stripping --enable-avresample --enable-avisynth --enable-gnutls --enable-ladspa --enable-libass --enable-libbluray --enable-libbs2b --enable-libcaca --enable-libcdio --enable-libflite --enable-libfontconfig --enable-libfreetype --enable-libfribidi --enable-libgme --enable-libgsm --enable-libmodplug --enable-libmp3lame --enable-libopenjpeg --enable-libopus --enable-libpulse --enable-librtmp --enable-libshine --enable-libsnappy --enable-libsoxr --enable-libspeex --enable-libssh --enable-libtheora --enable-libtwolame --enable-libvorbis --enable-libvpx --enable-libwavpack --enable-libwebp --enable-libx265 --enable-libxvid --enable-libzvbi --enable-openal --enable-opengl --enable-libdc1394 --enable-libzmq --enable-frei0r --enable-libx264 --enable-libopencv --enable-openssl --enable-gnutls
- */
 inline pair<string, string> executeCommand(const string& cmd){
     redi::pstream proc;
 	log::log(log::debug, "[FFMPEG] Executing command \"" + cmd + "\"");
@@ -273,14 +234,16 @@ std::shared_ptr<music::manager::PlayerProvider> create_provider() {
 }
 
 FFMpegProvider* FFMpegProvider::instance = nullptr;
-FFMpegProvider::FFMpegProvider(const shared_ptr<FFMpegProviderConfig>& cfg) : config(cfg) {
+FFMpegProvider::FFMpegProvider(shared_ptr<FFMpegProviderConfig>  cfg) : config(std::move(cfg)) {
+	evthread_use_pthreads();
+
 	FFMpegProvider::instance = this;
 	this->providerName = "FFMpeg";
 	this->providerDescription = "FFMpeg playback support";
 
 	this->readerBase = event_base_new();
 	this->readerDispatch = std::thread([&]{
-		while(this->readerBase)
+		while(!event_base_got_exit(this->readerBase))
 			event_base_loop(this->readerBase, EVLOOP_NO_EXIT_ON_EMPTY);
 	});
 
@@ -293,21 +256,18 @@ FFMpegProvider::FFMpegProvider(const shared_ptr<FFMpegProviderConfig>& cfg) : co
 FFMpegProvider::~FFMpegProvider() {
 	FFMpegProvider::instance = nullptr;
 
-    auto base = this->readerBase;
-    this->readerBase = nullptr;
-    if(base) {
-        event_base_loopbreak(base);
-        event_base_loopexit(base, nullptr);
+    if(this->readerBase) {
+        event_base_loopexit(this->readerBase, nullptr);
 
-        if(this->readerDispatch.joinable())
-        	try {
-        		this->readerDispatch.join();
-        	} catch(std::system_error& ex) {
-        		if(ex.code() != errc::invalid_argument) /* exception is not about that the thread isn't joinable anymore */
-        			throw;
-        	}
+        try {
+	        this->readerDispatch.join();
+        } catch(std::system_error& ex) {
+	        if(ex.code() != errc::invalid_argument) /* exception is not about that the thread isn't joinable anymore */
+		        throw;
+        }
 
-        event_base_free(base);
+        event_base_free(this->readerBase);
+	    this->readerBase = nullptr;
     }
 }
 
