@@ -45,7 +45,7 @@ namespace music {
 	    public:
 		    static FFMpegProvider* instance;
         public:
-            FFMpegProvider(const std::shared_ptr<FFMpegProviderConfig>& /* config */);
+            FFMpegProvider(std::shared_ptr<FFMpegProviderConfig>  /* config */);
             virtual ~FFMpegProvider();
 
 		    threads::Future<std::shared_ptr<UrlInfo>> query_info(const std::string &string, void *pVoid, void *pVoid1) override;
@@ -64,7 +64,7 @@ namespace music {
             std::vector<std::string> av_fmt;
 
             event_base* readerBase = nullptr;
-		    threads::Thread* readerDispatch = nullptr;
+		    std::thread readerDispatch;
 
 		    inline std::shared_ptr<FFMpegProviderConfig> configuration() { return this->config; }
     	private:

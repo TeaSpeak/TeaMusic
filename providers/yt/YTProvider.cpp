@@ -131,16 +131,18 @@ std::shared_ptr<music::manager::PlayerProvider> create_provider() {
 
     manager = new yt::YTVManager(config);
 
-    std::thread([] { /* compile regex patterns (async) */
+    auto thread_cr = std::thread([] { /* compile regex patterns (async) */
 	    music::log::log(music::log::info, "[YT-DL] Compiling patterns");
 	    auto begin = chrono::system_clock::now();
 	    supported_urls();
 	    auto end = chrono::system_clock::now();
 	    music::log::log(music::log::info, "[YT-DL] Patterns compiled (" + to_string(chrono::duration_cast<chrono::milliseconds>(end - begin).count()) + "ms)");
-    }).detach();
+    });
 
-    return std::shared_ptr<YTProvider>(new YTProvider(), [](YTProvider* provider){
+    return std::shared_ptr<YTProvider>(new YTProvider(), [thread_cr = std::move(thread_cr)](YTProvider* provider) mutable {
         if(!provider) return;
+
+	    thread_cr.join();
         delete provider;
         delete manager;
         manager = nullptr;
