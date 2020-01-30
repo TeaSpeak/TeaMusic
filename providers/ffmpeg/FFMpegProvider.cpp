@@ -235,7 +235,8 @@ std::shared_ptr<music::manager::PlayerProvider> create_provider() {
 
 FFMpegProvider* FFMpegProvider::instance = nullptr;
 FFMpegProvider::FFMpegProvider(shared_ptr<FFMpegProviderConfig>  cfg) : config(std::move(cfg)) {
-	evthread_use_pthreads();
+	if(auto err = evthread_use_pthreads(); !err)
+	    log::log(log::err, "failed to initialize event to use pthreads");
 
 	FFMpegProvider::instance = this;
 	this->providerName = "FFMpeg";
@@ -243,8 +244,7 @@ FFMpegProvider::FFMpegProvider(shared_ptr<FFMpegProviderConfig>  cfg) : config(s
 
 	this->readerBase = event_base_new();
 	this->readerDispatch = std::thread([&]{
-	    //TODO: This crashes somehow, but because we've EVLOOP_NO_EXIT_ON_EMPTY its irrelevant
-        //while(!event_base_got_exit(this->readerBase))
+        while(!event_base_got_exit(this->readerBase))
 			event_base_loop(this->readerBase, EVLOOP_NO_EXIT_ON_EMPTY);
 	});
 
