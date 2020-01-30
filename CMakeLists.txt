@@ -3,14 +3,14 @@ project(TeaMusic-Provider)
 
 set(CMAKE_VERBOSE_MAKEFILE ON)
 
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++17 -fpermissive -Wall -Wno-sign-compare -static-libgcc -static-libstdc++ -fPIC")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++17 -fpermissive -Wall -Wno-sign-compare -static-libgcc -static-libstdc++")
 set(CMAKE_INCLUDE_CURRENT_DIR ON)
 set(CMAKE_LIBRARY_OUTPUT_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/bin/providers")
 
 set(HEADERS include/MusicPlayer.h)
 
-option(BUILD_PROVIDER_YT "Build the Youtube-dl provider. (You requre extra headers)" ON)
-option(BUILD_PROVIDER_FFMPEG "Build the FFMpeg provider. (You requre extra headers)" ON)
+option(BUILD_PROVIDER_YT "Build the Youtube-dl provider. (It requires extra headers)" ON)
+option(BUILD_PROVIDER_FFMPEG "Build the FFMpeg provider. (It requires extra headers)" ON)
 option(BUILD_HELPERS "Build the development helper classes" ON)
 
 if(NOT EXISTS ../shared/src/)
@@ -20,7 +20,12 @@ if(NOT EXISTS ../shared/src/)
 endif()
 
 include_directories(include)
+if (LIBEVENT_STATIC_LINK)
+    unset(LIBEVENT_STATIC_LINK)
+endif ()
+find_library(Libevent 2.2 REQUIRED COMPONENTS core pthreads)
 
+message("Libs: ${Libevent_LIBRARIES}|${Libevent_LIBRARIES}  ${Libevent_FOUND} ${LIBEVENT_SHARED_LIBRARIES}")
 if (BUILD_PROVIDER_YT)
 	message("Building YouTube provider")
 	add_library(ProviderYT SHARED providers/yt/YTProvider.cpp providers/yt/YTVManager.cpp providers/yt/YoutubeMusicPlayer.cpp providers/yt/YTRegex.cpp)

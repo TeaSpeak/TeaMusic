@@ -215,6 +215,7 @@ std::shared_ptr<music::manager::PlayerProvider> create_provider() {
 
 
     auto provider = std::make_shared<FFMpegProvider>(config);
+    if(!provider->initialize()) return nullptr;
 
     auto prots = available_protocols(config, error);
     if(!error.empty()) {
@@ -235,23 +236,9 @@ std::shared_ptr<music::manager::PlayerProvider> create_provider() {
 
 FFMpegProvider* FFMpegProvider::instance = nullptr;
 FFMpegProvider::FFMpegProvider(shared_ptr<FFMpegProviderConfig>  cfg) : config(std::move(cfg)) {
-	if(auto err = evthread_use_pthreads(); !err)
-	    log::log(log::err, "failed to initialize event to use pthreads");
-
 	FFMpegProvider::instance = this;
 	this->providerName = "FFMpeg";
 	this->providerDescription = "FFMpeg playback support";
-
-	this->readerBase = event_base_new();
-	this->readerDispatch = std::thread([&]{
-        while(!event_base_got_exit(this->readerBase))
-			event_base_loop(this->readerBase, EVLOOP_NO_EXIT_ON_EMPTY);
-	});
-
-#if defined (__unix__) || (defined (__APPLE__) && defined (__MACH__))
-	pthread_t handle = this->readerDispatch.native_handle();
-	pthread_setname_np(handle, "FFMPeg IO Loop");
-#endif
 }
 
 FFMpegProvider::~FFMpegProvider() {
@@ -270,6 +257,25 @@ FFMpegProvider::~FFMpegProvider() {
         event_base_free(this->readerBase);
 	    this->readerBase = nullptr;
     }
+}
+
+bool FFMpegProvider::initialize() {
+    if(auto err = evthread_use_pthreads(); err) {
+        log::log(log::critical, "failed to initialize event to use pthreads");
+        return false;
+    }
+
+    this->readerBase = event_base_new();
+    this->readerDispatch = std::thread([&]{
+        while(!event_base_got_exit(this->readerBase))
+            event_base_loop(this->readerBase, EVLOOP_NO_EXIT_ON_EMPTY);
+    });
+
+#if defined (__unix__) || (defined (__APPLE__) && defined (__MACH__))
+    pthread_t handle = this->readerDispatch.native_handle();
+    pthread_setname_np(handle, "FFMPeg IO Loop");
+#endif
+    return true;
 }
 
 threads::Future<shared_ptr<UrlInfo>> FFMpegProvider::query_info(const std::string &string, void *pVoid, void *pVoid1) {

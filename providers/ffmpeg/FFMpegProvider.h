@@ -48,6 +48,8 @@ namespace music {
             FFMpegProvider(std::shared_ptr<FFMpegProviderConfig>  /* config */);
             virtual ~FFMpegProvider();
 
+            bool initialize();
+
 		    threads::Future<std::shared_ptr<UrlInfo>> query_info(const std::string &string, void *pVoid, void *pVoid1) override;
 
 		    threads::Future<std::shared_ptr<music::MusicPlayer>> createPlayer(const std::string &, void*, void*) override;
