@@ -20,14 +20,6 @@ if(NOT EXISTS ../shared/src/)
 endif()
 
 include_directories(include)
-if (LIBEVENT_STATIC_LINK)
-    unset(LIBEVENT_STATIC_LINK)
-endif ()
-find_package(Libevent 2.2 REQUIRED COMPONENTS core pthreads)
-if (NOT Libevent_FOUND)
-    message(FATAL_ERROR "Failed to find libevent (Variable: ${LIBEVENT_FOUND})")
-endif ()
-message("Libevent version: ${Libevent_FOUND}")
 
 if (BUILD_PROVIDER_YT)
 	message("Building YouTube provider")
@@ -45,15 +37,15 @@ endif ()
 
 if(BUILD_PROVIDER_FFMPEG)
 	message("Building FFMpeg provider")
-	add_library(ProviderFFMpeg SHARED providers/ffmpeg/FFMpegProvider.cpp providers/ffmpeg/FFMpegMusicPlayer.cpp providers/ffmpeg/FFMpegMusicProcess.cpp)
-	target_link_libraries(ProviderFFMpeg ${StringVariable_LIBRARIES_STATIC} threadpool::static libevent::pthreads)
+	add_library(ProviderFFMpeg SHARED providers/ffmpeg/FFMpegProvider.cpp providers/ffmpeg/FFMpegMusicPlayer.cpp providers/ffmpeg/FFMpegMusicProcess.cpp providers/ffmpeg/libevent.h providers/ffmpeg/libevent.cpp)
+	target_link_libraries(ProviderFFMpeg ${StringVariable_LIBRARIES_STATIC} threadpool::static)
 	set_target_properties(ProviderFFMpeg
 			PROPERTIES
 			PREFIX "000" #Library load order (Requires nothink to load)
 	)
 endif()
 
-if(BUILD_HELPERS)
+if(BUILD_HELPERS AND OFF)
 	message("Building helpers")
 	add_executable(YoutubedlTest helpers/YoutubedlTest.cpp)
 	target_link_libraries(YoutubedlTest ProviderFFMpeg ProviderYT)

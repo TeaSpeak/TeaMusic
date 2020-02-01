@@ -5,7 +5,8 @@
 #include <memory>
 #include <deque>
 #include <utility>
-#include <ThreadPool/Mutex.h>
+#include <variant>
+#include <map>
 #include <ThreadPool/Future.h>
 
 #if defined(_MSC_VER)
@@ -234,7 +235,7 @@ namespace music {
             size_t _preferredSampleCount = 0;
 		    size_t _channelCount = 0;
 
-            threads::Mutex eventLock;
+            std::mutex eventLock;
             std::deque<std::pair<std::string, std::function<void(MusicEvent)>>> eventHandlers;
     };
 

@@ -1,11 +1,11 @@
 #include <experimental/filesystem>
 #include <utility>
-#include <event2/thread.h>
 #include <StringVariable.h>
 #include "FFMpegProvider.h"
 #include "FFMpegMusicPlayer.h"
 #include "providers/shared/INIParser.h"
 #include "providers/shared/pstream.h"
+#include "./libevent.h"
 
 using namespace std;
 using namespace std::chrono;
@@ -245,7 +245,7 @@ FFMpegProvider::~FFMpegProvider() {
 	FFMpegProvider::instance = nullptr;
 
     if(this->readerBase) {
-        event_base_loopexit(this->readerBase, nullptr);
+        libevent::functions->event_base_loopexit(this->readerBase, nullptr);
 
         try {
 	        this->readerDispatch.join();
@@ -254,21 +254,24 @@ FFMpegProvider::~FFMpegProvider() {
 		        throw;
         }
 
-        event_base_free(this->readerBase);
+        libevent::functions->event_base_free(this->readerBase);
 	    this->readerBase = nullptr;
     }
+
+    libevent::release_functions();
 }
 
 bool FFMpegProvider::initialize() {
-    if(auto err = evthread_use_pthreads(); err) {
-        log::log(log::critical, "failed to initialize event to use pthreads");
+    std::string error{};
+    if(!libevent::resolve_functions(error)) {
+        log::log(log::err, "failed to resolve libevent functions: " + error);
         return false;
     }
 
-    this->readerBase = event_base_new();
+    this->readerBase = libevent::functions->event_base_new();
     this->readerDispatch = std::thread([&]{
-        while(!event_base_got_exit(this->readerBase))
-            event_base_loop(this->readerBase, EVLOOP_NO_EXIT_ON_EMPTY);
+        while(!libevent::functions->event_base_got_exit(this->readerBase))
+            libevent::functions->event_base_loop(this->readerBase, 0x04); //EVLOOP_NO_EXIT_ON_EMPTY
     });
 
 #if defined (__unix__) || (defined (__APPLE__) && defined (__MACH__))

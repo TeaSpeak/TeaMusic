@@ -1,8 +1,8 @@
 #include <MusicPlayer.h>
-#include <event.h>
 #include <sstream>
 #include <memory>
 #include <map>
+#include "libevent.h"
 
 #define DEBUG_FFMPEG
 template <typename T>
@@ -44,9 +44,9 @@ namespace music {
 
 			    //IO
 			    threads::Mutex eventLock;
-			    event_base* eventBase = nullptr;
-			    event* outEvent = nullptr;
-			    event* errEvent = nullptr;
+			    void* eventBase = nullptr;
+			    void* outEvent = nullptr;
+			    void* errEvent = nullptr;
 			    bool buffering = false;
 
 			    ReadCallback callback_read_error = [](const std::string&) {};
@@ -58,16 +58,16 @@ namespace music {
 				    threads::MutexLock lock(this->eventLock);
 				    if(this->buffering) return;
 				    this->buffering = true;
-				    if(this->outEvent) event_add(this->outEvent, nullptr);
-				    if(this->errEvent) event_add(this->errEvent, nullptr);
+				    if(this->outEvent) libevent::functions->event_add(this->outEvent, nullptr);
+				    if(this->errEvent) libevent::functions->event_add(this->errEvent, nullptr);
 			    }
 
 			    void disableBuffering() {
 				    threads::MutexLock lock(this->eventLock);
 				    if(!this->buffering) return;
 				    this->buffering = false;
-				    if(this->outEvent) event_del_noblock(this->outEvent);
-				    if(this->errEvent) event_del_noblock(this->errEvent);
+				    if(this->outEvent) libevent::functions->event_del_noblock(this->outEvent);
+				    if(this->errEvent) libevent::functions->event_del_noblock(this->errEvent);
 			    }
 
 

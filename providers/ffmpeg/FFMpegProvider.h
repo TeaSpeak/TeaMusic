@@ -1,7 +1,6 @@
 #pragma once
 
 #include <MusicPlayer.h>
-#include <event.h>
 #include <string>
 
 extern "C" {
@@ -65,7 +64,7 @@ namespace music {
             std::vector<std::string> av_protocol;
             std::vector<std::string> av_fmt;
 
-            event_base* readerBase = nullptr;
+            void* readerBase = nullptr;
 		    std::thread readerDispatch;
 
 		    inline std::shared_ptr<FFMpegProviderConfig> configuration() { return this->config; }

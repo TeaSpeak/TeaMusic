@@ -392,16 +392,16 @@ void FFMpegStream::finalize() {
 		auto old_event = this->outEvent;
 		this->outEvent = nullptr;
 		event_lock.unlock();
-		event_del_block(old_event);
-		event_free(old_event);
+        libevent::functions->event_del_block(old_event);
+        libevent::functions->event_free(old_event);
 		event_lock.lock();
 	}
 	if(errEvent) {
 		auto old_event = this->errEvent;
 		this->errEvent = nullptr;
 		event_lock.unlock();
-		event_del_block(old_event);
-		event_free(old_event);
+        libevent::functions->event_del_block(old_event);
+        libevent::functions->event_free(old_event);
 		event_lock.lock();
 	}
 }
@@ -418,9 +418,9 @@ bool FFMpegStream::initializeEvents() {
 	enableNonBlock(fd_out);
 	log::log(log::debug, "Got ffmpeg file descriptors for err " + to_string(fd_err) + " and out " + to_string(fd_out));
 	if(fd_err > 0)
-		this->errEvent = event_new(this->eventBase, fd_err, EV_READ | EV_PERSIST, FFMpegStream::callbackfn_read_error, this);
+		this->errEvent = libevent::functions->event_new(this->eventBase, fd_err, EV_READ | EV_PERSIST, FFMpegStream::callbackfn_read_error, this);
 	if(fd_out > 0)
-		this->outEvent = event_new(this->eventBase, fd_out, EV_READ | EV_PERSIST, FFMpegStream::callbackfn_read_output, this);
+		this->outEvent = libevent::functions->event_new(this->eventBase, fd_out, EV_READ | EV_PERSIST, FFMpegStream::callbackfn_read_output, this);
 	return true;
 }
 
