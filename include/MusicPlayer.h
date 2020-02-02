@@ -46,10 +46,10 @@ namespace music {
          * Encoding    : s16le
          */
         mutable int16_t* segments;
-	    const size_t maxSegmentLength = 0;
-	    const size_t channels = 0;
-        size_t segmentLength = 0;
-        bool full = false;
+	    const size_t maxSegmentLength{0};
+	    const size_t channels{0};
+        size_t segmentLength{0};
+        bool full{false};
 
 
 	    SampleSegment(int16_t *segments, const size_t maxSegmentLength, const size_t channels) : segments(segments), maxSegmentLength(maxSegmentLength), channels(channels) {}
@@ -59,10 +59,14 @@ namespace music {
 	    	auto memory = malloc(maxSamples * channels * sizeof(int16_t) + sizeof(SampleSegment));
 	    	new(memory) SampleSegment((int16_t*) ((char*) memory + sizeof(SampleSegment)), maxSamples, channels);
 
-	    	return std::shared_ptr<SampleSegment>((SampleSegment*) memory, ::free);
+	    	return std::shared_ptr<SampleSegment>((SampleSegment*) memory, [](SampleSegment* data) {
+	    	    data->~SampleSegment();
+	    	    ::free(data);
+	    	});
 	    }
     };
 
+    typedef std::chrono::milliseconds PlayerUnits;
 	enum ThumbnailType {
 		THUMBNAIL_NONE,
 		THUMBNAIL_URL
@@ -70,20 +74,20 @@ namespace music {
 
 	class Thumbnail {
 		public:
-			Thumbnail(ThumbnailType _type) : _type(_type) {}
-			~Thumbnail() {}
+			explicit Thumbnail(ThumbnailType _type) : _type(_type) {}
+			virtual ~Thumbnail() = default;
 
-			ThumbnailType type() { return this->_type; }
+			[[nodiscard]] ThumbnailType type() const { return this->_type; }
 		private:
 			ThumbnailType _type;
 	};
 
 	class ThumbnailUrl : public Thumbnail {
 		public:
-			ThumbnailUrl(std::string url) : Thumbnail(ThumbnailType::THUMBNAIL_URL), _url(std::move(url)) {}
-			~ThumbnailUrl() {}
+			explicit ThumbnailUrl(std::string url) : Thumbnail(ThumbnailType::THUMBNAIL_URL), _url(std::move(url)) {}
+			~ThumbnailUrl() override = default;
 
-			std::string url() { return this->_url; }
+            [[nodiscard]] std::string url() const { return this->_url; }
 		private:
 			std::string _url;
 	};
@@ -102,6 +106,9 @@ namespace music {
 	struct UrlSongInfo : public UrlInfo {
 		std::string title;
 		std::string description;
+
+		std::shared_ptr<Thumbnail> thumbnail;
+        PlayerUnits length;
 
 		std::map<std::string, std::string> metadata;
 	};
@@ -127,7 +134,6 @@ namespace music {
         EVENT_ERROR
     };
 
-    typedef std::chrono::milliseconds PlayerUnits;
     class MusicPlayer {
         public:
             virtual bool initialize(size_t channelCount) = 0;

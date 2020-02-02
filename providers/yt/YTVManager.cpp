@@ -129,9 +129,15 @@ threads::Future<std::shared_ptr<music::UrlInfo>> YTVManager::resolve_url_info(st
 		    return;
 	    }
 
+	    std::string thumbnail;
 	    deque<unique_ptr<Json::Value>> jsons;
 	    for(const auto& line : available_lines) {
 	    	if(line.empty() || line[0] != '{') {
+	    	    if(line.find("https://") == 0 && thumbnail.empty()) {
+                    thumbnail = line;
+                    continue;
+	    	    }
+
 			    log::log(log::trace, "[YT-DL][Query] Invalid query line \"" + line + "\". Skip parsing");
 			    continue;
 	    	}
@@ -161,7 +167,10 @@ threads::Future<std::shared_ptr<music::UrlInfo>> YTVManager::resolve_url_info(st
 		    info->type = UrlType::TYPE_VIDEO;
 		    info->url = video; /* dont use resolved url because its just tmp */
 		    info->description = root["description"].asString();
-		    info->title = root["\"fulltitle\""].asString();
+		    info->title = root["fulltitle"].asString();
+            info->length = std::chrono::seconds{root["duration"].asInt()};
+            if(!thumbnail.empty())
+                info->thumbnail = std::make_shared<ThumbnailUrl>(thumbnail);
 		    info->metadata["upload_date"] = root["upload_date"].asString();
 		    info->metadata["live"] = std::to_string(!root["is_live"].isNull() && root["is_live"].asBool());
 
