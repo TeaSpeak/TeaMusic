@@ -1,15 +1,17 @@
 #include <map>
 #include <regex>
-#include <include/MusicPlayer.h>
-#include "providers/shared/pstream.h"
-#include "FFMpegMusicPlayer.h"
+#include <utility>
+#include <StringVariable.h>
+#include <teaspeak/MusicPlayer.h>
+#include <providers/shared/pstream.h>
+#include "./FFMpegMusicPlayer.h"
 
 using namespace std;
 using namespace std::chrono;
 using namespace music;
 using namespace music::player;
 
-FFMpegMusicPlayer::FFMpegMusicPlayer(const std::string& fname) : fname(fname) {
+FFMpegMusicPlayer::FFMpegMusicPlayer(std::string  fname) : file{std::move(fname)} {
     this->_preferredSampleCount = 960;
 }
 
@@ -18,7 +20,7 @@ FFMpegMusicPlayer::FFMpegMusicPlayer(const std::string &a, bool b) : FFMpegMusic
 }
 
 FFMpegMusicPlayer::~FFMpegMusicPlayer() {
-	this->destroyProcess();
+    this->destroy_stream();
 };
 
 size_t FFMpegMusicPlayer::sampleRate() {
@@ -27,257 +29,211 @@ size_t FFMpegMusicPlayer::sampleRate() {
 
 bool FFMpegMusicPlayer::initialize(size_t channel) {
 	AbstractMusicPlayer::initialize(channel);
-    spawnProcess();
+	this->stream_successfull_started = false;
+	this->spawn_stream();
     return this->good();
 }
 
 void FFMpegMusicPlayer::play() {
-    if(!this->stream) this->spawnProcess();
-    this->end_reached = false;
+    if(!this->stream)
+        this->spawn_stream();
+
     AbstractMusicPlayer::play();
 }
 
 void FFMpegMusicPlayer::pause() {
+    auto stream_ref = this->stream;
+    if(stream_ref) this->start_offset = stream_ref->current_playback_index();
+    this->destroy_stream(); //TODO: Add some kind of pause?
+
     AbstractMusicPlayer::pause();
 }
 
 void FFMpegMusicPlayer::stop() {
-    this->destroyProcess();
+    this->destroy_stream();
     AbstractMusicPlayer::stop();
 }
 
-PlayerUnits FFMpegMusicPlayer::length() { return this->stream ? this->stream->duration : PlayerUnits(0); }
-PlayerUnits FFMpegMusicPlayer::currentIndex() { return this->stream ? this->seekOffset + milliseconds((int64_t) (this->sampleOffset * 1000.f / this->sampleRate())) : PlayerUnits(0); }
+PlayerUnits FFMpegMusicPlayer::length() {
+    return this->cached_stream_info.length;
+}
+
+PlayerUnits FFMpegMusicPlayer::currentIndex() {
+    auto stream_ref = this->stream;
+    if(!stream_ref) return this->start_offset;
+
+    return stream_ref->current_playback_index();
+}
+
 PlayerUnits FFMpegMusicPlayer::bufferedUntil() {
-	if(!this->stream) return PlayerUnits(0);
-	return this->currentIndex() + milliseconds((int64_t) (this->bufferedSampleCount() * 1000.f / this->sampleRate())) ;
+    auto stream_ref = this->stream;
+    if(!stream_ref) return this->start_offset;
+
+    return stream_ref->current_buffer_index();
 }
 
-size_t FFMpegMusicPlayer::bufferedSampleCount() {
-	threads::MutexLock lock(this->sampleLock);
-	size_t result = 0;
-	for(const auto& buffer : this->bufferedSamples)
-		result += buffer->segmentLength;
-	return result;
+std::string FFMpegMusicPlayer::songTitle() {
+    return this->cached_stream_info.title;
 }
-
-std::string FFMpegMusicPlayer::songTitle() { return this->stream ? this->stream->metadata["title"] : ""; }
-std::string FFMpegMusicPlayer::songDescription() { return this->stream ? this->stream->metadata["artist"] + "(" + this->stream->metadata["album"] + ")" : ""; }
+std::string FFMpegMusicPlayer::songDescription() {
+    return this->cached_stream_info.description;
+}
 
 void FFMpegMusicPlayer::rewind(const PlayerUnits &duration) {
-    threads::MutexLock lock(this->streamLock);
-    if(this->currentIndex() < duration) {
-        this->seekOffset = PlayerUnits(0);
-    } else {
-        this->seekOffset = this->currentIndex() - duration;
-    }
+    auto stream_ref = this->stream;
+    if (!stream_ref) return;
 
-    if(this->stream) this->spawnProcess();
+    auto target = stream_ref->current_playback_index() - duration;
+    if(target.count() < 0)
+        target = PlayerUnits{0};
+
+    this->destroy_stream();
+
+    this->start_offset = target;
+    this->spawn_stream();
 }
 void FFMpegMusicPlayer::forward(const PlayerUnits &duration) {
-    threads::MutexLock lock(this->streamLock);
-    this->seekOffset = this->currentIndex() + duration;
-    if(this->seekOffset > this->length()) {
+    auto stream_ref = this->stream;
+    if(!stream_ref) return;
+
+    auto target = stream_ref->current_playback_index() + duration;
+    auto& info = stream_ref->stream_info();
+    if(info.initialized && target > std::chrono::ceil<PlayerUnits>(info.stream_length)) {
         this->stop();
         return;
     }
 
-    if(this->stream) this->spawnProcess();
+    this->destroy_stream();
+
+    this->start_offset = target;
+    this->spawn_stream();
 }
 
 bool FFMpegMusicPlayer::finished() { return this->stream == nullptr; }
 
 
 std::shared_ptr<SampleSegment> FFMpegMusicPlayer::peekNextSegment() {
-    threads::MutexLock lock(this->sampleLock);
-	if(this->bufferedSamples.empty()) return nullptr;
-    return this->bufferedSamples.front();
+    auto stream_ref = this->stream;
+    if(!stream_ref) return nullptr;
+
+    return stream_ref->peek_next_segment();
 }
 
 std::shared_ptr<SampleSegment> FFMpegMusicPlayer::popNextSegment() {
-    threads::MutexLock lock(this->sampleLock);
+    auto stream_ref = this->stream;
+    if(!stream_ref) goto flush_events;
 
-    if(this->state() == PlayerState::STATE_STOPPED || this->state() == PlayerState::STATE_UNINIZALISIZED) return nullptr;
-	if(this->bufferedSamples.empty()) {
-		if(this->end_reached){
-			this->fireEvent(MusicEvent::EVENT_END);
-			this->stop();
-		}
-		return nullptr;
-	}
-	if(this->bufferedSamples.front()->full) {
-		std::shared_ptr<SampleSegment> front = this->bufferedSamples[0];
-		this->bufferedSamples.pop_front();
-		this->sampleOffset += front->segmentLength;
-		this->updateBufferState();
-		return front;
-	}
-	return nullptr;
-}
+    if(this->state() == PlayerState::STATE_STOPPED || this->state() == PlayerState::STATE_UNINIZALISIZED)
+        goto flush_events;
 
-extern void trimString(std::string&);
+    if(auto buffer = stream_ref->pop_next_segment(); buffer)
+        return buffer;
 
-//video:0kB audio:5644kB subtitle:0kB other streams:0kB global headers:0kB muxing overhead: 0.000000%
-const static auto property_regex = []() -> std::shared_ptr<std::regex> {
-	try {
-		return make_shared<std::regex>(R"((size|time|bitrate|speed)=([ \t]+)?([a-zA-Z0-9\:\.\,\/%]+)([ \t]+)?)");
-	} catch (std::exception& ex) {
-		log::log(log::err, "[FFMPEG] Could not compile property regex!");
-	}
-	return nullptr;
-}();
-const static auto stats_regex = []() -> std::shared_ptr<std::regex> {
-	try {
-		return make_shared<std::regex>(R"((video|audio|subtitle|other|streams|global|headers|muxing|overhead)(:( +)?([a-zA-Z0-9\:\.\,\/%]+))?( +)?)");
-	} catch (std::exception& ex) {
-		log::log(log::err, "[FFMPEG] Could not compile stats regex!");
-	}
-	return nullptr;
-}();
-
-void FFMpegMusicPlayer::callback_read_err(const std::string& constBuffer) {
-	deque<string> lines;
-	{
-		size_t index = 0;
-		do {
-			auto found = constBuffer.find('\n', index);
-			lines.push_back(constBuffer.substr(index, found - index));
-			index = found + 1;
-		} while(index != 0);
-	}
-
-	bool error_send = false;
-	bool output_stream = false;
-	for(const auto& line : lines) {
-		if(line.find_first_not_of(" \n\t\r") == string::npos && !error_send) continue;
-
-		if(property_regex) {
-			auto properties_begin = std::sregex_iterator(line.begin(), line.end(), *property_regex);
-			auto properties_end = std::sregex_iterator();
-			if(properties_begin != properties_end) {
-				log::log(log::trace, "[FFMPEG][" + to_string(this) + "] Got " + to_string(std::distance(properties_begin, properties_end)) + " property values on err stream. (Attention: These properties may differ with the known expected properties!)");
-				for(auto index = properties_begin; index != properties_end; index++) {
-					if(index->length() < 3) {
-						log::log(log::trace, "[FFMPEG][" + to_string(this) + "] - <invalid group size for \"" + index->str() + "\">");
-						continue;
-					}
-					log::log(log::trace, "[FFMPEG][" + to_string(this) + "] - " + index->operator[](1).str() + " => " + index->operator[](3).str());
-				}
-				continue;
-			}
-		}
-		if(stats_regex) {
-			auto stats_begin = std::sregex_iterator(line.begin(), line.end(), *stats_regex);
-			auto stats_end = std::sregex_iterator();
-			if(stats_begin != stats_end) {
-				log::log(log::trace, "[FFMPEG][" + to_string(this) + "] Got " + to_string(std::distance(stats_begin, stats_end)) + " status values on err stream. (Attention: These properties may differ with the known expected stats!)");
-				for(auto index = stats_begin; index != stats_end; index++) {
-					if(index->length() < 5) {
-						log::log(log::trace, "[FFMPEG][" + to_string(this) + "] - <invalid group size for \"" + index->str() + "\">");
-						continue;
-					}
-					log::log(log::trace, "[FFMPEG][" + to_string(this) + "] - " + index->operator[](1).str() + " => " + index->operator[](4).str());
-				}
-				continue;
-			}
-		}
-		if(line.find("Output #") == 0) {
-			output_stream = true;
-			continue;
-		}
-		if(output_stream && line.find("  ") == 0)
-			continue;
-		else
-			output_stream = false;
-
-		if(!error_send) {
-			log::log(log::err, "[FFMPEG][" + to_string(this) + "] Got error message from FFMpeg:");
-			error_send = true;
-		}
-		log::log(log::err, "[FFMPEG][" + to_string(this) + "] " + line);
-	}
-}
-
-void FFMpegMusicPlayer::callback_read_output(const std::string& constBuffer) {
-	std::string buffer = constBuffer;
-
-	//log::log(log::debug, "Got " + to_string(buffer.length()) + " bytes");
-
-	threads::MutexLock lock(this->sampleLock);
-	std::shared_ptr<SampleSegment> currentSegment = nullptr;
-	if(!this->bufferedSamples.empty() && !this->bufferedSamples.back()->full)
-		currentSegment = this->bufferedSamples.back();
-
-	if(this->byteBufferIndex > 0) {
-		buffer = std::string(this->byteBuffer, this->byteBufferIndex) + buffer;
-		this->byteBufferIndex = 0;
-	}
-
-	auto availableSamples = buffer.length() / sizeof(uint16_t) / this->_channelCount;
-	size_t readBufferIndex = 0;
-
-	while(availableSamples > 0){
-		if(!currentSegment) {
-			currentSegment = SampleSegment::allocate(this->_preferredSampleCount, this->_channelCount);
-			currentSegment->full = false;
-			this->bufferedSamples.push_back(currentSegment);
-		}
-
-		auto samplesLeft = currentSegment->maxSegmentLength - currentSegment->segmentLength;
-		auto samplesToRead = min(samplesLeft, availableSamples);
-
-		auto targetIndex = currentSegment->segmentLength * currentSegment->channels;
-		auto copyLength = this->_channelCount * samplesToRead * sizeof(uint16_t);
-
-		memcpy((void *) &currentSegment->segments[targetIndex], &buffer[readBufferIndex], copyLength);
-
-		readBufferIndex += copyLength;
-		availableSamples -= samplesToRead;
-
-		currentSegment->segmentLength += samplesToRead;
-		if(currentSegment->segmentLength == currentSegment->maxSegmentLength) {
-			currentSegment->full = true;
-			currentSegment = nullptr;
-		}
-	}
-
-	if(readBufferIndex < buffer.length()) {
-		auto overhead = buffer.length() - readBufferIndex;
-		//log::log(log::debug, "Got overhead " + to_string(overhead));
-		memcpy(this->byteBuffer, &buffer[readBufferIndex], overhead);
-		this->byteBufferIndex = overhead;
-	}
-	if(readBufferIndex > buffer.length())
-		log::log(log::critical, "[FFMPEG][" + to_string(this) + "] Invalid read (overflow!) Application could crash");
-
-	this->updateBufferState();
-}
-
-
-void FFMpegMusicPlayer::callback_end() {
-	this->end_reached = true;
-
-	threads::MutexLock lock(this->sampleLock);
-	if(this->bufferedSamples.empty()) return;
-	this->bufferedSamples.back()->full = true;
-}
-
-void FFMpegMusicPlayer::updateBufferState() {
-	if(this->end_reached || !this->stream) return;
-
-	auto bufferedSamples = this->bufferedSampleCount();
-	auto bufferedSeconds = bufferedSamples / this->sampleRate();
-	if(bufferedSeconds > 20 && this->stream->buffering) {
-		log::log(log::debug, "[FFMPEG][" + to_string(this) + "] Stop buffering");
-		this->stream->disableBuffering();
-	}
-	if(bufferedSeconds < 10 && !this->stream->buffering) {
-		log::log(log::debug, "[FFMPEG][" + to_string(this) + "] Start buffering");
-		this->stream->enableBuffering();
-	}
+    flush_events:
+    if(this->stream_aborted) {
+        this->fireEvent(MusicEvent::EVENT_ABORT);
+    } else if(this->stream_ended) {
+        this->fireEvent(MusicEvent::EVENT_END);
+    }
+    this->stream_ended = false;
+    this->stream_aborted = false;
+    return nullptr;
 }
 
 deque<shared_ptr<Thumbnail>> FFMpegMusicPlayer::thumbnails() {
 	//TODO generate thumbnails
 	return {};
+}
+
+void FFMpegMusicPlayer::spawn_stream() {
+    std::string error{};
+
+    auto stream = std::make_shared<FFMpegStream>(this->file, this->cached_stream_info.length.count() > 0 ? this->start_offset : PlayerUnits{0}, 960, 2, 48000);
+    if(!stream->initialize(error)) {
+        this->apply_error(error);
+        return;
+    }
+
+    stream->callback_info_initialized = std::bind(&FFMpegMusicPlayer::callback_stream_info, this);
+    stream->callback_ended = std::bind(&FFMpegMusicPlayer::callback_stream_ended, this);
+    stream->callback_abort = std::bind(&FFMpegMusicPlayer::callback_stream_aborted, this);
+
+    this->stream_aborted = false;
+    this->stream_ended = false;
+    this->cached_stream_info.up2date = false;
+    std::swap(this->stream, stream);
+
+    if(stream) {
+        stream->callback_info_initialized = nullptr;
+        stream->callback_ended = nullptr;
+        stream->callback_abort = nullptr;
+    }
+}
+
+void FFMpegMusicPlayer::destroy_stream() {
+    std::exchange(this->stream, nullptr);
+}
+
+void FFMpegMusicPlayer::callback_stream_info() {
+    if(this->cached_stream_info.up2date) return;
+
+    auto stream_ref = this->stream;
+    if(!stream_ref) return;
+
+    auto& info = stream_ref->stream_info();
+    std::lock_guard lock{info.lock};
+    if(!info.initialized) return;
+
+    this->cached_stream_info.length = info.stream_length;
+    this->cached_stream_info.title = "unknown";
+    for(const auto& key : {"title", "StreamTitle"}) {
+        if(info.metadata.count(key)) {
+            this->cached_stream_info.title = info.metadata.at(key);
+            break;
+        }
+    }
+
+    this->cached_stream_info.description = "unknown";
+    for(const auto& key : {"artist", "album", "icy-name"}) {
+        if(info.metadata.count(key)) {
+            this->cached_stream_info.description = info.metadata.at(key);
+            break;
+        }
+    }
+
+    this->stream_successfull_started = true;
+    this->stream_fail_count = 0;
+    this->fireEvent(EVENT_INFO_UPDATE);
+}
+
+void FFMpegMusicPlayer::callback_stream_ended() {
+    this->stream_ended = true;
+}
+
+void FFMpegMusicPlayer::callback_stream_aborted() {
+    this->stream_aborted = true;
+
+    auto stream_ref = this->stream;
+    if(!stream_ref) return;
+
+    if(this->stream_successfull_started && this->stream_fail_count++ < 3) {
+        log::log(log::debug, "FFmpeg stream aborted. Abort count: " + std::to_string(this->stream_fail_count) + ". Restarting stream.");
+        this->start_offset = stream->current_playback_index(); //TODO Save already buffered samples!
+        this->spawn_stream();
+    } else {
+        log::log(log::debug, "FFmpeg stream aborted. Abort count: " + std::to_string(this->stream_fail_count) + ". Stream failed totally.");
+    }
+}
+
+void FFMpegMusicPlayer::callback_stream_connect_error(const std::string &error) {
+    auto stream_ref = this->stream;
+    if(!stream_ref) return;
+
+    log::log(log::debug, "FFmpeg failed to connect: " + error);
+    if(!this->stream_successfull_started) {
+        stream_ref->callback_abort = nullptr; /* we already handle that */
+        this->apply_error(error);
+        this->fireEvent(MusicEvent::EVENT_ERROR);
+        return;
+    }
 }

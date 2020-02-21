@@ -1,6 +1,6 @@
 #pragma once
 
-#include <include/MusicPlayer.h>
+#include <include/teaspeak/MusicPlayer.h>
 #include "YTVManager.h"
 
 extern yt::YTVManager* manager;

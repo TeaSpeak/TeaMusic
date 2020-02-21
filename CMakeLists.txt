@@ -7,7 +7,7 @@ set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++17 -fpermissive -Wall -Wno-sign-
 set(CMAKE_INCLUDE_CURRENT_DIR ON)
 set(CMAKE_LIBRARY_OUTPUT_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/bin/providers")
 
-set(HEADERS include/MusicPlayer.h)
+set(HEADERS include/teaspeak/MusicPlayer.h)
 
 option(BUILD_PROVIDER_YT "Build the Youtube-dl provider. (It requires extra headers)" ON)
 option(BUILD_PROVIDER_FFMPEG "Build the FFMpeg provider. (It requires extra headers)" ON)
@@ -37,7 +37,12 @@ endif ()
 
 if(BUILD_PROVIDER_FFMPEG)
 	message("Building FFMpeg provider")
-	add_library(ProviderFFMpeg SHARED providers/ffmpeg/FFMpegProvider.cpp providers/ffmpeg/FFMpegMusicPlayer.cpp providers/ffmpeg/FFMpegMusicProcess.cpp providers/ffmpeg/libevent.h providers/ffmpeg/libevent.cpp)
+	add_library(ProviderFFMpeg SHARED
+			providers/ffmpeg/FFMpegProvider.cpp
+			providers/ffmpeg/FFMpegMusicPlayer.cpp 
+			providers/ffmpeg/FFMpegMusicProcess.cpp
+			providers/ffmpeg/libevent.cpp
+			providers/ffmpeg/FFMpegStream.cpp)
 	target_link_libraries(ProviderFFMpeg ${StringVariable_LIBRARIES_STATIC} threadpool::static)
 	set_target_properties(ProviderFFMpeg
 			PROPERTIES

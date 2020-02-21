@@ -1,6 +1,6 @@
 #pragma once
 
-#include <MusicPlayer.h>
+#include <teaspeak/MusicPlayer.h>
 #include <string>
 
 extern "C" {
@@ -44,7 +44,7 @@ namespace music {
 	    public:
 		    static FFMpegProvider* instance;
         public:
-            FFMpegProvider(std::shared_ptr<FFMpegProviderConfig>  /* config */);
+            explicit FFMpegProvider(std::shared_ptr<FFMpegProviderConfig> /* config */);
             virtual ~FFMpegProvider();
 
             bool initialize();

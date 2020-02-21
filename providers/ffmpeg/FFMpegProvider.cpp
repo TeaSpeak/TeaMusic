@@ -1,11 +1,11 @@
 #include <experimental/filesystem>
 #include <utility>
 #include <StringVariable.h>
-#include "FFMpegProvider.h"
-#include "FFMpegMusicPlayer.h"
-#include "providers/shared/INIParser.h"
-#include "providers/shared/pstream.h"
-#include "./libevent.h"
+#include <providers/shared/INIParser.h>
+#include <providers/shared/pstream.h>
+#include "./string_utils.h"
+#include "./FFMpegProvider.h"
+#include "./FFMpegMusicPlayer.h"
 
 using namespace std;
 using namespace std::chrono;
@@ -102,7 +102,6 @@ inline string part(std::string& str, const std::string& deleimiter, bool invert_
     return res;
 }
 
-extern void trimString(std::string &str);
 inline vector<string> available_protocols(const std::shared_ptr<music::FFMpegProviderConfig>& config, std::string &error) {
     error = "";
     auto vres = executeCommand(strvar::transform(config->commands.protocols, strvar::StringValue{"command", config->ffmpeg_command}));
@@ -121,7 +120,7 @@ inline vector<string> available_protocols(const std::shared_ptr<music::FFMpegPro
     string line;
     vector<string> resVec;
     while(!(line = part(result, "\n")).empty()){
-        trimString(line);
+        line = strings::trim(line);
         if(line == "Output:") break;
         resVec.push_back(line);
     }
@@ -251,7 +250,7 @@ FFMpegProvider::~FFMpegProvider() {
 	        this->readerDispatch.join();
         } catch(std::system_error& ex) {
 	        if(ex.code() != errc::invalid_argument) /* exception is not about that the thread isn't joinable anymore */
-		        throw;
+		        log::log(log::critical, "failed to join dispatch thread");
         }
 
         libevent::functions->event_base_free(this->readerBase);

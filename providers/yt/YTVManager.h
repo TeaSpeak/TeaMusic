@@ -1,7 +1,7 @@
 #pragma once
 
 #include <ThreadPool/ThreadPool.h>
-#include "include/MusicPlayer.h"
+#include "include/teaspeak/MusicPlayer.h"
 
 namespace yt {
     struct AudioInfo {

@@ -131,7 +131,9 @@ namespace music {
         EVENT_PAUSE,
         EVENT_ABORT,
         EVENT_END,
-        EVENT_ERROR
+        EVENT_ERROR,
+
+        EVENT_INFO_UPDATE
     };
 
     class MusicPlayer {

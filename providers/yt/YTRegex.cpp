@@ -2,7 +2,7 @@
 #include <map>
 #include <memory>
 #include <string>
-#include "include/MusicPlayer.h"
+#include "include/teaspeak/MusicPlayer.h"
 
 
 #define DEFINE_REGEX(webside, regex) register_url(webside, regex)
