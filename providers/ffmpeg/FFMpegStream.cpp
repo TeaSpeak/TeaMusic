@@ -366,16 +366,11 @@ void FFMpegStream::callback_read_err(const void *_buffer, size_t length) {
         }
 
         this->_stream_info.initialized = true;
-        if(auto callback{this->callback_info_initialized}; callback) {
-            ilock.unlock();
+        ilock.unlock();
+        if(auto callback{this->callback_info_initialized}; callback)
             callback();
-            ilock.lock();
-        }
 
-        if(this->meta_info_buffer.length()) {
-            ilock.unlock();
-            this->callback_read_err(nullptr, 0);
-        }
+        this->callback_read_err(nullptr, 0); /* just in case meta_info_buffer isn't empty */
     } else {
         std::vector<std::string> lines{};
         lines.reserve(32);
@@ -449,12 +444,12 @@ void FFMpegStream::callback_read_err(const void *_buffer, size_t length) {
             }
             log::log(log::err, "[FFMPEG][" + to_string(this) + "] " + std::string{line});
         }
+
+        ilock.unlock();
+        if(auto callback{this->callback_info_update}; callback)
+            callback();
     }
     this->_stream_info.update_cv.notify_all();
-
-    ilock.unlock();
-    if(auto callback{this->callback_info_update}; callback)
-        callback();
 }
 
 void FFMpegStream::callback_end() {
