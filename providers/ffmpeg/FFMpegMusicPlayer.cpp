@@ -11,12 +11,8 @@ using namespace std::chrono;
 using namespace music;
 using namespace music::player;
 
-FFMpegMusicPlayer::FFMpegMusicPlayer(std::string  fname) : file{std::move(fname)} {
+FFMpegMusicPlayer::FFMpegMusicPlayer(std::string fname, FFMPEGURLType type, FallbackStreamInfo fallback) : url_{std::move(fname)}, url_type{type}, fallback_stream_info{std::move(fallback)} {
     this->_preferredSampleCount = 960;
-}
-
-FFMpegMusicPlayer::FFMpegMusicPlayer(const std::string &a, bool b) : FFMpegMusicPlayer(a) {
-    this->live_stream = b;
 }
 
 FFMpegMusicPlayer::~FFMpegMusicPlayer() {
@@ -32,6 +28,19 @@ bool FFMpegMusicPlayer::initialize(size_t channel) {
 	this->stream_successfull_started = false;
 	this->spawn_stream();
     return this->good();
+}
+
+bool FFMpegMusicPlayer::await_info(const std::chrono::system_clock::time_point &timeout) const {
+    std::unique_lock ilock{this->cached_stream_info.cv_lock};
+    if(this->cached_stream_info.up2date) return true;
+
+    while(true) {
+        if(this->cached_stream_info.update_cv.wait_until(ilock, timeout) == std::cv_status::timeout)
+            return false;
+
+        if(this->cached_stream_info.up2date)
+            return true;
+    }
 }
 
 void FFMpegMusicPlayer::play() {
@@ -73,10 +82,10 @@ PlayerUnits FFMpegMusicPlayer::bufferedUntil() {
 }
 
 std::string FFMpegMusicPlayer::songTitle() {
-    return this->cached_stream_info.title;
+    return this->cached_stream_info.has_title ? this->cached_stream_info.title : this->fallback_stream_info.title;
 }
 std::string FFMpegMusicPlayer::songDescription() {
-    return this->cached_stream_info.description;
+    return this->cached_stream_info.has_description ? this->cached_stream_info.description : this->fallback_stream_info.description;
 }
 
 void FFMpegMusicPlayer::rewind(const PlayerUnits &duration) {
@@ -148,7 +157,7 @@ deque<shared_ptr<Thumbnail>> FFMpegMusicPlayer::thumbnails() {
 void FFMpegMusicPlayer::spawn_stream() {
     std::string error{};
 
-    auto stream = std::make_shared<FFMpegStream>(this->file, this->cached_stream_info.length.count() > 0 ? this->start_offset : PlayerUnits{0}, 960, 2, 48000);
+    auto stream = std::make_shared<FFMpegStream>(this->url_, this->url_type, this->cached_stream_info.length.count() > 0 ? this->start_offset : PlayerUnits{0}, 960, 2, 48000);
     if(!stream->initialize(error)) {
         this->apply_error(error);
         return;
@@ -157,6 +166,7 @@ void FFMpegMusicPlayer::spawn_stream() {
     stream->callback_info_initialized = std::bind(&FFMpegMusicPlayer::callback_stream_info, this);
     stream->callback_ended = std::bind(&FFMpegMusicPlayer::callback_stream_ended, this);
     stream->callback_abort = std::bind(&FFMpegMusicPlayer::callback_stream_aborted, this);
+    stream->callback_connect_error = std::bind(&FFMpegMusicPlayer::callback_stream_connect_error, this, std::placeholders::_1);
 
     this->stream_aborted = false;
     this->stream_ended = false;
@@ -175,6 +185,8 @@ void FFMpegMusicPlayer::destroy_stream() {
 }
 
 void FFMpegMusicPlayer::callback_stream_info() {
+    std::lock_guard info_lock{this->cached_stream_info.cv_lock};
+    this->cached_stream_info.update_cv.notify_all();
     if(this->cached_stream_info.up2date) return;
 
     auto stream_ref = this->stream;
@@ -185,22 +197,26 @@ void FFMpegMusicPlayer::callback_stream_info() {
     if(!info.initialized) return;
 
     this->cached_stream_info.length = info.stream_length;
-    this->cached_stream_info.title = "unknown";
+
+    this->cached_stream_info.has_title = false;
     for(const auto& key : {"title", "StreamTitle"}) {
         if(info.metadata.count(key)) {
             this->cached_stream_info.title = info.metadata.at(key);
+            this->cached_stream_info.has_title = true;
             break;
         }
     }
 
-    this->cached_stream_info.description = "unknown";
+    this->cached_stream_info.has_description = false;
     for(const auto& key : {"artist", "album", "icy-name"}) {
         if(info.metadata.count(key)) {
             this->cached_stream_info.description = info.metadata.at(key);
+            this->cached_stream_info.has_description = true;
             break;
         }
     }
 
+    this->cached_stream_info.up2date = true;
     this->stream_successfull_started = true;
     this->stream_fail_count = 0;
     this->fireEvent(EVENT_INFO_UPDATE);

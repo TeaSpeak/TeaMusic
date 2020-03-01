@@ -18,25 +18,29 @@ namespace music {
 
 			std::string playback = "${command} -reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5 -hide_banner -stats -i \"${path}\" -vn -bufsize 512k -ac ${channel_count} -ar 48000 -f s16le -acodec pcm_s16le pipe:1";
 			std::string playback_seek = "${command} -reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5 -hide_banner -ss ${seek_offset} -stats -i \"${path}\" -vn -bufsize 512k -ac ${channel_count} -ar 48000 -f s16le -acodec pcm_s16le pipe:1";
-		} commands;
+
+			std::string file_playback = "${command} -hide_banner -stats -i \"${path}\" -vn -bufsize 512k -ac ${channel_count} -ar 48000 -f s16le -acodec pcm_s16le pipe:1";
+            std::string file_playback_seek = "${command} -hide_banner -ss ${seek_offset} -stats -i \"${path}\" -vn -bufsize 512k -ac ${channel_count} -ar 48000 -f s16le -acodec pcm_s16le pipe:1";
+        } commands;
 	};
 
 	struct FFMpegData {
-		static constexpr int CURRENT_VERSION = 1 ;
+		static constexpr int CURRENT_VERSION = 2;
 		enum Type : uint8_t {
 			UNDEFINED,
 			REPLAY_FILE
 		};
 
 		struct Header {
-			int version = 1;
-			void(*_free)(void*) = nullptr;      /* default will be free(...); Will be used as well for this struct */
+			int version;
+			void(*_free)(void*);      /* default will be free(...); Will be used as well for this struct */
 			Type type;
 		};
 
 		struct FileReplay : public Header {
 			char* file_path;                    /* will be freed via _free */
 			char* file_description;             /* will be freed via _free */
+            char* file_title;                   /* will be freed via _free */
 		};
 	};
 

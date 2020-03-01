@@ -50,7 +50,7 @@ threads::Future<std::shared_ptr<music::MusicPlayer>> FFMpegProvider::createPlaye
 	//custom_data
 	std::shared_ptr<music::MusicPlayer> player;
 	if(!custom_data) {
-		player = std::make_shared<music::player::FFMpegMusicPlayer>(url);
+		player = std::make_shared<music::player::FFMpegMusicPlayer>(url, player::FFMPEGURLType::STREAM, music::player::FFMpegMusicPlayer::FallbackStreamInfo{});
 	} else {
 		std::shared_ptr<FFMpegData::Header> data;
 		{
@@ -65,15 +65,19 @@ threads::Future<std::shared_ptr<music::MusicPlayer>> FFMpegProvider::createPlaye
 
 			data = shared_ptr<FFMpegData::Header>(header, free_ptr);
 		}
-		if(!data || data->version != 1) {
+		if(!data || data->version != FFMpegData::CURRENT_VERSION) {
 			future.executionFailed("invalid data or version");
 			return future;
 		}
 		if(data->type == FFMpegData::REPLAY_FILE) {
 			auto cast_data = static_pointer_cast<FFMpegData::FileReplay>(data);
-			player = std::make_shared<music::player::FFMpegMusicPlayer>(string(cast_data->file_path));
+            music::player::FFMpegMusicPlayer::FallbackStreamInfo fallback_info{};
+            fallback_info.title = cast_data->file_title ? std::string{cast_data->file_title} : "";
+            fallback_info.description = cast_data->file_description ? std::string{cast_data->file_description} : "";
+			player = std::make_shared<music::player::FFMpegMusicPlayer>(std::string{cast_data->file_path}, player::FFMPEGURLType::FILE, fallback_info);
 
 			/* free content */
+            cast_data->_free(cast_data->file_title);
 			cast_data->_free(cast_data->file_description);
 			cast_data->_free(cast_data->file_path);
 		} else {
@@ -188,6 +192,9 @@ std::shared_ptr<music::manager::PlayerProvider> create_provider() {
 
 				config->commands.playback = ini_reader.Get("commands", "playback", config->commands.playback);
 				config->commands.playback_seek = ini_reader.Get("commands", "playback_seek", config->commands.playback_seek);
+
+                config->commands.file_playback = ini_reader.Get("commands", "file_playback", config->commands.file_playback);
+                config->commands.file_playback_seek = ini_reader.Get("commands", "file_playback_seek", config->commands.file_playback_seek);
 				music::log::log(music::log::info, "[FFMPEG] Config successfully loaded");
 			}
 		} else {
@@ -280,16 +287,40 @@ bool FFMpegProvider::initialize() {
     return true;
 }
 
-threads::Future<shared_ptr<UrlInfo>> FFMpegProvider::query_info(const std::string &string, void *pVoid, void *pVoid1) {
-	auto info = make_shared<UrlSongInfo>();
+threads::Future<shared_ptr<UrlInfo>> FFMpegProvider::query_info(const std::string &url, void *custom_data, void *pVoid1) {
+    auto future = threads::Future<shared_ptr<UrlInfo>>();
 
-	info->type = UrlType::TYPE_VIDEO;
-	info->url = string;
-	info->title = "";
-	info->description = "";
-	info->metadata = {};
+    auto player_fut = createPlayer(url, custom_data, pVoid1);
+    player_fut.wait();
+    if(player_fut.failed()) {
+        future.executionFailed(player_fut.errorMegssage());
+    } else {
+        auto player = dynamic_pointer_cast<music::player::FFMpegMusicPlayer>(*player_fut.get());
+        std::thread([player, future]{
+            if(!player->initialize(0)) {
+                future.executionFailed("failed to initialize player");
+                return;
+            }
 
-	threads::Future<shared_ptr<UrlInfo>> result;
-	result.executionSucceed(info);
-	return result;
+            auto timeout = std::chrono::system_clock::now();
+            timeout += std::chrono::seconds{30};
+            if(!player->await_info(timeout)) {
+                future.executionFailed("info load timeout");
+                return;
+            }
+
+            auto info = make_shared<UrlSongInfo>();
+
+            info->type = UrlType::TYPE_VIDEO;
+            info->url = player->url();
+            info->title = player->songTitle();
+            info->description = player->songDescription();
+            info->metadata = {};
+
+            future.executionSucceed(info);
+        }).detach();
+    }
+
+    return future;
+
 }

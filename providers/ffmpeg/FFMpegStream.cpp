@@ -180,8 +180,8 @@ namespace ffmpeg {
     }
 }
 
-FFMpegStream::FFMpegStream(std::string url, PlayerUnits seek, size_t fsc, size_t channels, size_t sample_rate)
-    : url{std::move(url)}, frame_sample_count{fsc}, channel_count{channels}, sample_rate{sample_rate}, stream_seek_offset{seek} {
+FFMpegStream::FFMpegStream(std::string url, FFMPEGURLType type, PlayerUnits seek, size_t fsc, size_t channels, size_t sample_rate)
+    : url{std::move(url)}, url_type{type}, frame_sample_count{fsc}, channel_count{channels}, sample_rate{sample_rate}, stream_seek_offset{seek} {
 
 }
 
@@ -198,7 +198,17 @@ bool FFMpegStream::initialize(std::string &error) {
 
     std::string ffmpeg_command;
     {
-        ffmpeg_command = strvar::transform(this->stream_seek_offset.count() > 0 ? FFMpegProvider::instance->configuration()->commands.playback_seek : FFMpegProvider::instance->configuration()->commands.playback,
+        const auto is_seek = this->stream_seek_offset.count() > 0;
+        const auto config = FFMpegProvider::instance->configuration();
+        switch (this->url_type) {
+            case FFMPEGURLType::STREAM:
+                ffmpeg_command = is_seek ? config->commands.playback_seek : config->commands.playback;
+                break;
+            case FFMPEGURLType::FILE:
+                ffmpeg_command = is_seek ? config->commands.file_playback_seek : config->commands.file_playback;
+                break;
+        }
+        ffmpeg_command = strvar::transform(ffmpeg_command,
                                            strvar::StringValue{"command", FFMpegProvider::instance->configuration()->ffmpeg_command},
                                            strvar::StringValue{"path", this->url},
                                            strvar::StringValue{"channel_count", std::to_string(this->channel_count)},

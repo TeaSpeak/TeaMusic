@@ -14,6 +14,11 @@ inline std::string to_string(T* ptr) {
 }
 
 namespace music::player {
+    enum struct FFMPEGURLType {
+        STREAM,
+        FILE
+    };
+
     struct FFMpegProcessHandle {
         public:
             enum struct ErrorCode {
@@ -92,7 +97,7 @@ namespace music::player {
                 std::map<std::string, std::string> stream_stats{};
             };
 
-            explicit FFMpegStream(std::string /* url */, PlayerUnits /* seek offset */, size_t /* frame sample count */, size_t /* channel count */, size_t /* sample rate */);
+            explicit FFMpegStream(std::string /* url */, FFMPEGURLType /* url type */, PlayerUnits /* seek offset */, size_t /* frame sample count */, size_t /* channel count */, size_t /* sample rate */);
             ~FFMpegStream();
 
             bool initialize(std::string& /* error */);
@@ -106,6 +111,7 @@ namespace music::player {
             [[nodiscard]] PlayerUnits current_buffer_index();
 
             const std::string url;
+            const FFMPEGURLType url_type;
             const size_t frame_sample_count;
             const size_t channel_count;
             const size_t sample_rate;
@@ -156,11 +162,16 @@ namespace music::player {
 
     class FFMpegMusicPlayer : public AbstractMusicPlayer {
         public:
-            explicit FFMpegMusicPlayer(std::string);
-            FFMpegMusicPlayer(const std::string&, bool);
+            struct FallbackStreamInfo {
+                std::string title{};
+                std::string description{};
+            };
+
+            FFMpegMusicPlayer(std::string, FFMPEGURLType /* type */, FallbackStreamInfo /* fallback info */);
             ~FFMpegMusicPlayer() override;
 
             bool initialize(size_t) override;
+            [[nodiscard]] bool await_info(const std::chrono::system_clock::time_point& /* timeout */) const;
 
             void pause() override;
 
@@ -183,16 +194,22 @@ namespace music::player {
 
             std::deque<std::shared_ptr<Thumbnail>> thumbnails() override;
 
+            std::string url() const { return this->url_; }
             std::string songTitle() override;
             std::string songDescription() override;
 
         private:
             struct CachedStreamInfo {
+                bool has_title{false};
+                bool has_description{false};
+
                 std::string title{};
                 std::string description{};
                 PlayerUnits length{};
 
                 bool up2date{false};
+                mutable std::mutex cv_lock{};
+                mutable std::condition_variable update_cv{};
             };
 
             void spawn_stream();
@@ -203,14 +220,14 @@ namespace music::player {
             void callback_stream_aborted();
             void callback_stream_connect_error(const std::string&);
 
-            std::string file;
+            std::string url_;
+            FFMPEGURLType url_type{FFMPEGURLType::STREAM};
             std::shared_ptr<FFMpegStream> stream{};
 
             CachedStreamInfo cached_stream_info{};
+            FallbackStreamInfo fallback_stream_info{};
 
             PlayerUnits start_offset{0};
-            bool live_stream{false};
-
             bool stream_ended{false}, stream_aborted{false};
 
             bool stream_successfull_started{false};
