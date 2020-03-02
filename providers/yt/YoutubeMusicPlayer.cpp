@@ -3,7 +3,7 @@
 
 using namespace music::player;
 
-YoutubeMusicPlayer::YoutubeMusicPlayer(std::shared_ptr<yt::AudioInfo> info) : FFMpegMusicPlayer{info->stream_url, FFMPEGURLType::STREAM}, video{std::move(info)} {}
+YoutubeMusicPlayer::YoutubeMusicPlayer(std::shared_ptr<yt::AudioInfo> info) : FFMpegMusicPlayer{info->stream_url, FFMPEGURLType::STREAM, FallbackStreamInfo{}}, video{std::move(info)} {}
 YoutubeMusicPlayer::~YoutubeMusicPlayer() = default;
 
 std::string music::player::YoutubeMusicPlayer::songTitle() {
