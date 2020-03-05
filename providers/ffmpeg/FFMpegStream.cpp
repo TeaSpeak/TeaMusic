@@ -242,8 +242,25 @@ void FFMpegStream::finalize() {
         }
 
         if(this->process_stream) {
-            this->process_stream->rdbuf()->kill(SIGTERM);
-            delete this->process_stream;
+            this->process_stream->rdbuf()->kill(SIGQUIT);
+
+            if(!this->process_stream->rdbuf()->exited())
+                this->process_stream->rdbuf()->kill(SIGTERM);
+
+            if(!this->process_stream->rdbuf()->exited())
+                this->process_stream->rdbuf()->kill(SIGKILL);
+
+            if(this->process_stream->rdbuf()->exited()) {
+                delete this->process_stream;
+            } else {
+                /* not the best practice, but we do not want the bot to hang */
+                log::log(log::debug, "[FFMPEG] Failed to exit ffmpeg process handle. Deleting process handle (" + std::to_string((uintptr_t) this->process_stream) + ") within another thread.");
+                std::thread([stream{this->process_stream}]{
+                    delete stream;
+                    log::log(log::debug, "[FFMPEG] Deleting process handle (" + std::to_string((uintptr_t) stream) + ") done.");
+                }).detach();
+            }
+
             this->process_stream = nullptr;
         }
     }
