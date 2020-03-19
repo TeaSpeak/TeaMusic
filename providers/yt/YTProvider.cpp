@@ -41,6 +41,7 @@ class YTProvider : public PlayerProvider {
 
             bool result = false;
         	auto& map = *supported_urls();
+
             for(const auto& entry : map)
                 if(std::regex_match(str, *entry.second)) {
                 	result = true;

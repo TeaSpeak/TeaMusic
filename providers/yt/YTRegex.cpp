@@ -18,25 +18,29 @@ std::deque<std::string> _regex_ignore = {
 		"vidme"
 };
 
-static void _setup_regex();
-static void _setup_regex_0();
-std::map<std::string, std::unique_ptr<std::regex>>* _supported_urls = nullptr;
+static void setup_regex_();
+static void setup_regex_0_();
+std::map<std::string, std::unique_ptr<std::regex>>* supported_urls_{nullptr};
+std::map<std::string, std::unique_ptr<std::regex>>* supported_urls_loading{nullptr};
 
 std::mutex _supported_urls_lock;
 std::map<std::string, std::unique_ptr<std::regex>>* supported_urls() {
-	if(!_supported_urls) {
+	if(!supported_urls_) {
 		std::unique_lock lock(_supported_urls_lock);
-		if(!_supported_urls) {
-			_setup_regex();
-			_setup_regex_0();
-		}
+		if(supported_urls_) return supported_urls_;
+
+        supported_urls_loading = new std::map<std::string, std::unique_ptr<std::regex>>();
+        setup_regex_();
+        setup_regex_0_();
+		supported_urls_ = supported_urls_loading;
+        supported_urls_loading = nullptr;
 	}
-	return _supported_urls;
+	return supported_urls_;
 }
 
 void register_url(const std::string& name, const std::string& raw_regex) {
-	if(!_supported_urls)
-		_supported_urls = new std::map<std::string, std::unique_ptr<std::regex>>();
+    assert(supported_urls_loading);
+
 	try {
 		for(const auto& ignore : _regex_ignore) {
 			if(name == ignore) {
@@ -44,13 +48,14 @@ void register_url(const std::string& name, const std::string& raw_regex) {
 				return;
 			}
 		}
-		(*_supported_urls)[name] = std::make_unique<std::regex>(raw_regex, std::regex::icase | std::regex::ECMAScript);
+
+		(*supported_urls_loading)[name] = std::make_unique<std::regex>(raw_regex, std::regex::icase | std::regex::ECMAScript);
 	} catch(const std::regex_error& error) {
 		music::log::log(music::log::err, "[YT-DL] Failed to compile regex for " + name + ": " + raw_regex);
 	}
 }
 
-static void _setup_regex_0() {
+static void setup_regex_0_() {
 	DEFINE_REGEX("youtube:truncated_id_2", R"(https?:\/\/(?:www\.)?youtube\.com\/watch\?v=([0-9A-Za-z_-]{1,12})$)"); //Original length 11, but allow one more IDK why :)
 	DEFINE_REGEX("youtube:video_all", R"(^((?:https?:)?\/\/)?((?:www|m)\.)?((?:youtube\.com|youtu.be))(\/(?:[\w\-]+\?v=|embed\/|v\/)?)([\w\-]+)(\S+)?$)");
 }
@@ -74,7 +79,7 @@ Script:
 	    print("obj.%s = %r" % (attr, getattr(obj, attr)))
 
 	def print_regex():
-	    print('static void _setup_regex() {')
+	    print('static void setup_regex_() {')
 	    for e in gen_extractors():
 	        if e.IE_NAME == 'generic':
 	            continue
@@ -95,7 +100,7 @@ Script:
 	    print_regex()
 
 */
-static void _setup_regex() {
+static void setup_regex_() {
 	DEFINE_REGEX("pcmag", R"(https?:\/\/(?:www\.)?pcmag\.com\/(videos|article2)(\/.+)?\/(.+))");
 	DEFINE_REGEX("Telewebion", R"(https?:\/\/(?:www\.)?telewebion\.com\/#!\/episode\/(\d+))");
 	DEFINE_REGEX("Iconosquare", R"(https?:\/\/(?:www\.)?(?:iconosquare\.com|statigr\.am)\/p\/([^\/]+))");
