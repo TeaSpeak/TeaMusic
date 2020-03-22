@@ -90,6 +90,7 @@ std::shared_ptr<music::manager::PlayerProvider> create_provider() {
 				config->youtubedl_command = ini_reader.Get("general", "youtubedl_command", config->youtubedl_command);
 				config->commands.version = ini_reader.Get("commands", "version", config->commands.version);
 				config->commands.query_video = ini_reader.Get("commands", "query_video", config->commands.query_video);
+                config->commands.query_url = ini_reader.Get("commands", "query_url", config->commands.query_url);
 				music::log::log(music::log::info, "[YT-DL] Config successfully loaded");
 			}
 		} else {

@@ -23,7 +23,7 @@ namespace yt {
 			 * --no-playlist => Query video when a playlist and a video is present
 			 * --yes-playlist => Query playlist when a playlist and a video is present
 			 */
-			std::string query_url = "${command} -v -s --print-json --no-playlist --flat-playlist --get-thumbnail \"${video_url}\"";
+			std::string query_url = "${command} -v --no-check-certificate -s --print-json --no-playlist --flat-playlist --get-thumbnail \"${video_url}\"";
 		} commands;
 	};
 
