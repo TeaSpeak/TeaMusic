@@ -233,13 +233,16 @@ bool FFMpegStream::initialize(std::string &error) {
 }
 
 void FFMpegStream::finalize() {
+    /*
+     * The destruction will block 'till callback_read_output or callback_read_error have finished.
+     * Bt callback_read_output/callback_read_error aqire the process lock
+     */
+    std::shared_ptr<FFMpegProcessHandle> phandle{};
     {
         std::lock_guard plock{this->process_lock};
 
-        if(this->process_handle) {
-            this->process_handle->finalize(); /* will block 'till callback_read_output or callback_read_error have finished */
-            this->process_handle = nullptr;
-        }
+        if(this->process_handle)
+            std::swap(phandle, this->process_handle);
 
         if(this->process_stream) {
             this->process_stream->rdbuf()->kill(SIGQUIT);
@@ -507,6 +510,8 @@ void FFMpegStream::update_buffer_state(bool lock) {
 
     {
         std::lock_guard plock{this->process_lock};
+        if(!this->process_handle) return;
+
         if(buffered_seconds > 20 && this->process_handle->buffering) {
             log::log(log::debug, "[FFMPEG][" + to_string(this) + "] Stop buffering");
             this->process_handle->disable_buffering();
