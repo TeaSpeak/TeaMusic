@@ -32,6 +32,6 @@ namespace strings {
             auto found = str.find('\n', index);
             result.push_back(str.substr(index, found - index));
             index = found + 1;
-        } while(index != 0);
+        } while(index != 0 && index > str.length());
     }
 }
