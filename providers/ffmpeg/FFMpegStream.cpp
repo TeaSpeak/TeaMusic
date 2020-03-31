@@ -2,6 +2,7 @@
 // Created by WolverinDEV on 21/02/2020.
 //
 #include <regex>
+#include <algorithm>
 #include <StringVariable.h>
 #include <providers/shared/pstream.h>
 #include "./FFMpegMusicPlayer.h"
@@ -182,11 +183,42 @@ namespace ffmpeg {
 
 FFMpegStream::FFMpegStream(std::string url, FFMPEGURLType type, PlayerUnits seek, size_t fsc, size_t channels, size_t sample_rate)
     : url{std::move(url)}, url_type{type}, frame_sample_count{fsc}, channel_count{channels}, sample_rate{sample_rate}, stream_seek_offset{seek} {
-
 }
 
 FFMpegStream::~FFMpegStream() {
     this->finalize();
+}
+
+bool cli_params_to_tokens(std::string_view cli, std::vector<std::string>& args) {
+    if(cli.empty()) return true;
+    args.reserve(std::count(cli.begin(), cli.end(), ' '));
+
+    size_t index{0}, findex{0};
+    do {
+        if(index >= cli.length()) break;
+        auto needle = cli[index] == '"' || cli[index] == '\'' ? cli[index++] : ' ';
+        findex = index;
+        while(true) {
+            findex = cli.find(needle, findex);
+            if(findex >= cli.length() || findex < 1) break;
+            if(cli[findex - 1] != '\\') break;
+            findex++;
+        };
+
+        if(findex == std::string::npos) {
+            if(index < cli.length())
+                args.emplace_back(cli.substr(index));
+            break;
+        } else if(findex == index) {
+            /* just two spaces after each other */
+            index++;
+            continue;
+        } else {
+            args.emplace_back(cli.substr(index, findex - index));
+            index = findex + 1;
+        }
+    } while(index != 0);
+    return true;
 }
 
 bool FFMpegStream::initialize(std::string &error) {
@@ -216,8 +248,17 @@ bool FFMpegStream::initialize(std::string &error) {
         );
     }
 
-    log::log(log::debug, "[FFMPEG][" + to_string(this) + "] Executing command \"" + ffmpeg_command + "\"");
-    this->process_stream = new redi::pstream{ffmpeg_command, redi::pstreams::pstdin | redi::pstreams::pstderr | redi::pstreams::pstdout};
+    std::vector<std::string> ffmpeg_command_argv{};
+    if(!cli_params_to_tokens(ffmpeg_command, ffmpeg_command_argv)) {
+        error = "failed to generate ffmpeg command line arguments";
+        return false;
+    }
+    if(ffmpeg_command_argv.empty()) {
+        error = "invalid ffmpeg command line argument count";
+        return false;
+    }
+
+    this->process_stream = new redi::pstream{ffmpeg_command, redi::pstreams::pstderr | redi::pstreams::pstdout};
     this->process_handle = std::make_shared<FFMpegProcessHandle>(this->process_stream);
 
     this->process_handle->io.event_base = FFMpegProvider::instance->readerBase;
@@ -266,6 +307,7 @@ void FFMpegStream::finalize() {
                         stream->rdbuf()->kill(SIGKILL);
                         std::this_thread::sleep_for(std::chrono::milliseconds{500});
                     }
+                    stream->close();
                     delete stream;
                     log::log(log::debug, "[FFMPEG] Deleting process handle (" + std::to_string((uintptr_t) stream) + ") done.");
                 }).detach();

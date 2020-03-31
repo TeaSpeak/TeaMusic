@@ -50,6 +50,7 @@ bool FFMpegProcessHandle::initialize_events() {
 
 	auto fd_err = this->process_handle->rdbuf()->rpipe(redi::basic_pstreambuf<char>::buf_read_src::rsrc_err);
 	auto fd_out = this->process_handle->rdbuf()->rpipe(redi::basic_pstreambuf<char>::buf_read_src::rsrc_out);
+
     enable_non_block(fd_err);
     enable_non_block(fd_out);
 
