@@ -81,11 +81,15 @@ bool FFMpegProcessHandle::initialize_events() {
 }
 
 void FFMpegProcessHandle::callback_read(int fd, bool is_err_stream) {
-	ssize_t read_buffer_length = 1024;
-	char buffer[1024];
+    constexpr auto buffer_size = 1024 * 1024;
+	ssize_t read_buffer_length{buffer_size};
+	char buffer[buffer_size];
 
     read_buffer_length = read(fd, buffer, read_buffer_length);
+    //log::log(log::trace, "Received " + std::to_string(read_buffer_length) + " at " + std::to_string(fd) + " " + (is_err_stream ? "err" : "out"));
 	if(read_buffer_length <= 0) {
+	    if(errno == EAGAIN) return;
+
         if(this->io.event_out) libevent::functions->event_del_noblock(this->io.event_out);
         if(this->io.event_err) libevent::functions->event_del_noblock(this->io.event_err);
 
@@ -99,7 +103,7 @@ void FFMpegProcessHandle::callback_read(int fd, bool is_err_stream) {
 			this->callback_end();
 		else
             this->callback_error(ErrorCode::IO_ERROR, errno);
-		//This pointer might be dangeling now because callbacks could delete up!
+		//This pointer might be dangeling now because callbacks could delete us!
 		return;
 	}
 

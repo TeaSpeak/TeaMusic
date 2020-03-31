@@ -245,20 +245,27 @@ void FFMpegStream::finalize() {
             std::swap(phandle, this->process_handle);
 
         if(this->process_stream) {
-            this->process_stream->rdbuf()->kill(SIGQUIT);
+            std::string send_signals{};
+            if(!this->process_stream->rdbuf()->exited()) {
+                this->process_stream->rdbuf()->kill(SIGQUIT);
+                send_signals += "SIGQUIT";
+            }
 
-            if(!this->process_stream->rdbuf()->exited())
-                this->process_stream->rdbuf()->kill(SIGTERM);
-
-            if(!this->process_stream->rdbuf()->exited())
+            if(!this->process_stream->rdbuf()->exited()) {
                 this->process_stream->rdbuf()->kill(SIGKILL);
+                send_signals += ", SIGKILL";
+            }
 
             if(this->process_stream->rdbuf()->exited()) {
                 delete this->process_stream;
             } else {
                 /* not the best practice, but we do not want the bot to hang */
-                log::log(log::debug, "[FFMPEG] Failed to exit ffmpeg process handle. Deleting process handle (" + std::to_string((uintptr_t) this->process_stream) + ") within another thread.");
+                log::log(log::debug, "[FFMPEG] Failed to exit ffmpeg process handle. Deleting process handle (" + std::to_string((uintptr_t) this->process_stream) + ") within another thread (signals send: " + (send_signals.empty() ? "none" : send_signals) + ").");
                 std::thread([stream{this->process_stream}]{
+                    while(!stream->rdbuf()->exited()) {
+                        stream->rdbuf()->kill(SIGKILL);
+                        std::this_thread::sleep_for(std::chrono::milliseconds{500});
+                    }
                     delete stream;
                     log::log(log::debug, "[FFMPEG] Deleting process handle (" + std::to_string((uintptr_t) stream) + ") done.");
                 }).detach();
