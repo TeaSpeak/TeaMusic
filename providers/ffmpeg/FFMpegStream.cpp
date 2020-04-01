@@ -258,7 +258,7 @@ bool FFMpegStream::initialize(std::string &error) {
         return false;
     }
 
-    this->process_stream = new redi::pstream{ffmpeg_command, redi::pstreams::pstderr | redi::pstreams::pstdout};
+    this->process_stream = new redi::pstream{ffmpeg_command_argv[0], ffmpeg_command_argv, redi::pstreams::pstderr | redi::pstreams::pstdout};
     this->process_handle = std::make_shared<FFMpegProcessHandle>(this->process_stream);
 
     this->process_handle->io.event_base = FFMpegProvider::instance->readerBase;

@@ -1102,7 +1102,7 @@ namespace redi
     basic_pstreambuf<C,T>*
     basic_pstreambuf<C,T>::open(const std::string& command, pmode mode)
     {
-        const char * shell_path = "/bin/bash"; /* for some reason /bin/sh leaves a zombie process after killing*/
+        const char * shell_path = "/bin/sh"; /* for some reason /bin/sh leaves a zombie process after killing*/
 #if 0
         const std::string argv[] = { "sh", "-c", command };
         return this->open(shell_path, argv_type(argv, argv+3), mode);
