@@ -220,6 +220,8 @@ namespace music::player {
             void callback_stream_aborted();
             void callback_stream_connect_error(const std::string&);
 
+            void handle_stream_fail();
+
             std::string url_;
             FFMPEGURLType url_type{FFMPEGURLType::STREAM};
             std::shared_ptr<FFMpegStream> stream{};

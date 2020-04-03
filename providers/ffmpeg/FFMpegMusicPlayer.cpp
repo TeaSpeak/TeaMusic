@@ -238,6 +238,8 @@ void FFMpegMusicPlayer::callback_stream_aborted() {
         this->spawn_stream();
     } else {
         log::log(log::debug, "FFmpeg stream aborted. Abort count: " + std::to_string(this->stream_fail_count) + ". Stream failed totally.");
+        this->apply_error("failed to reconnect to stream");
+        this->fireEvent(MusicEvent::EVENT_ERROR);
     }
 }
 
@@ -245,11 +247,12 @@ void FFMpegMusicPlayer::callback_stream_connect_error(const std::string &error) 
     auto stream_ref = this->stream;
     if(!stream_ref) return;
 
-    log::log(log::debug, "FFmpeg failed to connect: " + error);
-    if(!this->stream_successfull_started) {
-        stream_ref->callback_abort = nullptr; /* we already handle that */
-        this->apply_error(error);
-        this->fireEvent(MusicEvent::EVENT_ERROR);
+    /* If we know the stream is valid retry it. The callback_stream_aborted will be called after the connect error */
+    if(this->stream_successfull_started)
         return;
-    }
+
+    log::log(log::debug, "FFMpeg failed to connect: " + error);
+    stream_ref->callback_abort = nullptr; /* we already handle that */
+    this->apply_error(error);
+    this->fireEvent(MusicEvent::EVENT_ERROR);
 }
