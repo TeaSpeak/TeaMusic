@@ -46,6 +46,7 @@ namespace ffmpeg {
     }
 
     struct MetaEntry {
+        std::string log_prefix;
         std::string entry;
         std::deque<std::shared_ptr<MetaEntry>> children;
 
@@ -95,47 +96,45 @@ namespace ffmpeg {
      Press [q] to stop, [?] for help
 
 
-     ---------------------
-     Could be also like this:
-
-[19:43:01] [TRACE] Input #0, mp3, from 'http://stream01.iloveradio.de/iloveradio1.mp3':
-[19:43:01] [TRACE]   Metadata:
-[19:43:01] [TRACE]     StreamTitle     : SEAN PAUL - GOT 2 LUV U
-[19:43:01] [TRACE]     icy-br          : 128
-[19:43:01] [TRACE]     icy-name        : I Love Radio - Charts & Hits by iloveradio.de
-[19:43:01] [TRACE]     icy-pub         : -1
-[19:43:01] [TRACE]     icy-url         : iloveradio.de
-[19:43:01] [TRACE]   Duration: N/A, start: 0.000000, bitrate: 128 kb/s
-[19:43:01] [TRACE]     Stream #0:0: Audio: mp3, 44100 Hz, stereo, s16p, 128 kb/s
-[19:43:01] [TRACE] Stream mapping:
-[19:43:01] [TRACE]   Stream #0:0 -> #0:0 (mp3 (native) -> pcm_s16le (native))
-[19:43:01] [TRACE] Press [q] to stop, [?] for help
-
-[2018-10-21 17:51:14] [DEBUG] Input #0, hls,applehttp, from 'https://cf-hls-media.sndcdn.com/playlist/Kwf':
-[2018-10-21 17:51:14] [DEBUG]   Duration: 00:16:25.32, start: 0.000000, bitrate: 0 kb/s
-[2018-10-21 17:51:14] [DEBUG]   Program 0
-[2018-10-21 17:51:14] [DEBUG]     Metadata:
-[2018-10-21 17:51:14] [DEBUG]       variant_bitrate : 0
-[2018-10-21 17:51:14] [DEBUG]     Stream #0:0: Audio: mp3, 44100 Hz, stereo, s16p, 128 kb/s
-[2018-10-21 17:51:14] [DEBUG] Output #0, s16le, to 'pipe:1':
-[2018-10-21 17:51:14] [DEBUG]   Metadata:
-[2018-10-21 17:51:14] [DEBUG]     encoder         : Lavf56.40.101
-[2018-10-21 17:51:14] [DEBUG]     Stream #0:0: Audio: pcm_s16le, 48000 Hz, stereo, s16, 1536 kb/s
-[2018-10-21 17:51:14] [DEBUG]     Metadata:
-[2018-10-21 17:51:14] [DEBUG]       encoder         : Lavc56.60.100 pcm_s16le
-[2018-10-21 17:51:14] [DEBUG] Stream mapping:
-[2018-10-21 17:51:14] [DEBUG]   Stream #0:0 -> #0:0 (mp3 (native) -> pcm_s16le (native))
-[2018-10-21 17:51:14] [DEBUG] Press [q] to stop, [?] for help
+---------------------
+Could be also like this:
+Input #0, hls,applehttp, from 'https://cf-hls-media.sndcdn.com/playlist/Kwf':
+  Duration: 00:16:25.32, start: 0.000000, bitrate: 0 kb/s
+  Program 0
+    Metadata:
+      variant_bitrate : 0
+    Stream #0:0: Audio: mp3, 44100 Hz, stereo, s16p, 128 kb/s
+Output #0, s16le, to 'pipe:1':
+  Metadata:
+    encoder         : Lavf56.40.101
+    Stream #0:0: Audio: pcm_s16le, 48000 Hz, stereo, s16, 1536 kb/s
+    Metadata:
+      encoder         : Lavc56.60.100 pcm_s16le
+Stream mapping:
+  Stream #0:0 -> #0:0 (mp3 (native) -> pcm_s16le (native))
+Press [q] to stop, [?] for help
   */
     inline std::deque<std::shared_ptr<MetaEntry>> parse_metadata(const std::string& in) {
         std::deque<std::shared_ptr<MetaEntry>> stack;
         stack.push_back(std::make_shared<MetaEntry>());
 
-        size_t index = 0;
+        size_t index{0};
         do {
             auto old_index = index;
             index = in.find('\n', index);
             auto line = in.substr(old_index, index - old_index);
+            if(line.empty()) continue;
+
+            std::string log_prefix{};
+            if(line[0] == '['){
+                /* we've a debug prefix */
+                auto end = line.find_first_of(']', 1);
+                if(end != std::string::npos) {
+                    log_prefix = line.substr(1, end - 2);
+                    line = line.substr(end + 2); /* get rid of the first space as well */
+                }
+            }
+
             {
                 size_t space = line.find_first_not_of(' ');
                 if(space == std::string::npos) continue;
@@ -150,6 +149,7 @@ namespace ffmpeg {
                 stack.erase(stack.begin() + stack_index, stack.end());
 
                 auto entry = std::make_shared<MetaEntry>();
+                entry->log_prefix = log_prefix;
                 entry->entry = strings::trim<std::string>(line);
                 stack.back()->children.push_back(entry);
                 stack.push_back(std::move(entry));
