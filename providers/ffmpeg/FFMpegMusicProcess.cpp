@@ -95,7 +95,7 @@ void FFMpegProcessHandle::callback_read(int fd, bool is_err_stream) {
         if(this->io.event_err) libevent::functions->event_del_noblock(this->io.event_err);
 
 		if(read_buffer_length == 0)
-			this->callback_end();
+			this->callback_eof();
 		else
             this->callback_error(ErrorCode::IO_ERROR, errno);
 		//This pointer might be dangling now because callbacks are allowed delete us!

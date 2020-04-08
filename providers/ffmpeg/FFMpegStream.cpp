@@ -268,7 +268,7 @@ bool FFMpegStream::initialize(std::string &error) {
     this->process_handle->callback_read_error = std::bind(&FFMpegStream::callback_read_err, this, std::placeholders::_1, std::placeholders::_2);
     this->process_handle->callback_read_output = std::bind(&FFMpegStream::callback_read_output, this, std::placeholders::_1, std::placeholders::_2);
     this->process_handle->callback_error = std::bind(&FFMpegStream::callback_error, this, std::placeholders::_1, std::placeholders::_2);
-    this->process_handle->callback_end = std::bind(&FFMpegStream::callback_end, this);
+    this->process_handle->callback_eof = std::bind(&FFMpegStream::callback_eof, this);
     this->process_handle->enable_buffering();
     return true;
 }
@@ -531,7 +531,28 @@ void FFMpegStream::callback_read_err(const void *_buffer, size_t length) {
     this->_stream_info.update_cv.notify_all();
 }
 
-void FFMpegStream::callback_end() {
+void FFMpegStream::callback_eof() {
+    bool exited{false}; int exit_code{0};
+    {
+        std::lock_guard plock{this->process_lock};
+        if(!this->process_stream) {
+            exited = true;
+            exit_code = 0;
+        } else {
+            exited = this->process_stream->rdbuf()->exited();
+            exit_code = this->process_stream->rdbuf()->status();;
+        }
+    }
+
+    log::log(log::debug, "Received EOF from FFMPEG process stream. Exited: " + std::string{exited ? "yes" : "no"} + ", Code: " + std::to_string(exit_code));
+    if(!exited || exit_code != 0) {
+        log::log(log::err, "FFMPEG process ended with invalid exit code: " + std::to_string(exit_code));
+
+        if(auto callback{this->callback_abort}; callback)
+            callback();
+        return;
+    }
+
     {
         std::lock_guard block{this->audio.lock};
         if(!this->audio.buffered.empty())

@@ -27,7 +27,7 @@ namespace music::player {
 
             typedef std::function<void(const void* /* buffer */, size_t /* length */)> ReadCallback;
             typedef std::function<void(ErrorCode /* code */, int /* detail */)> ErrorCallback;
-            typedef std::function<void()> EndCallback;
+            typedef std::function<void()> EOFCallback;
             typedef std::function<void()> TimerCallback;
 
 #ifdef REDI_PSTREAM_H_SEEN //So you could include this header event without the extra libs
@@ -73,7 +73,7 @@ namespace music::player {
             ReadCallback callback_read_output{};
             TimerCallback callback_timer{};
             ErrorCallback callback_error = [](ErrorCode, int) {};
-            EndCallback callback_end = [](){};
+            EOFCallback callback_eof = [](){};
         private:
             void callback_read(int, bool);
     };
@@ -131,7 +131,7 @@ namespace music::player {
 
             void callback_read_output(const void* /* buffer */, size_t /* length */);
             void callback_read_err(const void* /* buffer */, size_t /* length */);
-            void callback_end();
+            void callback_eof();
             void callback_error(FFMpegProcessHandle::ErrorCode, int);
             void update_buffer_state(bool /* lock */);
 
