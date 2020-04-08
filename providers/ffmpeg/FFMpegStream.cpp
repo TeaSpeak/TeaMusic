@@ -276,7 +276,7 @@ bool FFMpegStream::initialize(std::string &error) {
 void FFMpegStream::finalize() {
     /*
      * The destruction will block 'till callback_read_output or callback_read_error have finished.
-     * Bt callback_read_output/callback_read_error aqire the process lock
+     * Bt callback_read_output/callback_read_error acquire the process lock
      */
     std::shared_ptr<FFMpegProcessHandle> phandle{};
     {
@@ -544,9 +544,37 @@ void FFMpegStream::callback_end() {
 }
 
 void FFMpegStream::callback_error(FFMpegProcessHandle::ErrorCode code, int data) {
-    if(code == FFMpegProcessHandle::ErrorCode::UNEXPECTED_EXIT && !this->_stream_info.initialized)
-        if(auto callback{this->callback_connect_error}; callback)
-            callback(this->meta_info_buffer.empty() ? "ffmpeg exited with " + std::to_string(data) : this->meta_info_buffer);
+    if(code == FFMpegProcessHandle::ErrorCode::IO_ERROR) {
+        bool exited{false}; int exit_code{0};
+        {
+            std::lock_guard plock{this->process_lock};
+            if(!this->process_stream) {
+                exited = true;
+                exit_code = 0;
+            } else {
+                exited = this->process_stream->rdbuf()->exited();
+                exit_code = this->process_stream->rdbuf()->status();;
+            }
+        }
+
+        if(exited && exit_code == 0) {
+            /* Normal ending, may pipe is broken or something. */
+            {
+                std::lock_guard block{this->audio.lock};
+                if (this->end_reached) return; /* check if we're not already having called the end callback */
+            }
+
+            if (auto callback{this->callback_ended}; callback)
+                callback();
+            return;
+        }
+        log::log(log::err, "Invalid read/write (error). Code: " + std::to_string(data) + " Message: " + strerror(data) + ": Exit: " + std::to_string(exited) + " (" + std::to_string(exit_code) + ")");
+        if(!this->_stream_info.initialized) {
+            if(auto callback{this->callback_connect_error}; callback)
+                callback(this->meta_info_buffer.empty() ? "ffmpeg exited with " + std::to_string(data) : this->meta_info_buffer);
+
+        }
+    }
     if(auto callback{this->callback_abort}; callback)
         callback();
 }

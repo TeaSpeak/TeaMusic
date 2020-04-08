@@ -94,17 +94,11 @@ void FFMpegProcessHandle::callback_read(int fd, bool is_err_stream) {
         if(this->io.event_out) libevent::functions->event_del_noblock(this->io.event_out);
         if(this->io.event_err) libevent::functions->event_del_noblock(this->io.event_err);
 
-        auto exited = this->process_handle->rdbuf()->exited();
-        auto code = this->process_handle->rdbuf()->status();
-		log::log(log::err, "Invalid read (error). Length: " + to_string(read_buffer_length) + " Code: " + to_string(errno) + " Message: " + strerror(errno) + ": Exit: " + std::to_string(exited) + " (" + std::to_string(code) + ")");
-
-		if(exited && code != 0)
-		    this->callback_error(ErrorCode::UNEXPECTED_EXIT, code);
-		else if(read_buffer_length == 0)
+		if(read_buffer_length == 0)
 			this->callback_end();
 		else
             this->callback_error(ErrorCode::IO_ERROR, errno);
-		//This pointer might be dangeling now because callbacks could delete us!
+		//This pointer might be dangling now because callbacks are allowed delete us!
 		return;
 	}
 

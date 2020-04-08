@@ -23,7 +23,6 @@ namespace music::player {
         public:
             enum struct ErrorCode {
                 IO_ERROR,
-                UNEXPECTED_EXIT
             };
 
             typedef std::function<void(const void* /* buffer */, size_t /* length */)> ReadCallback;
@@ -49,6 +48,9 @@ namespace music::player {
             void schedule_timer(const std::chrono::system_clock::time_point& /* timestamp */);
             void cancel_timer();
 
+            //Attention: Pointer might be dangling at any state except before initialize.
+            //We cant ensure that within the event loop process handle hasn't been deleted!
+            //but we don't really need to because that's not from interest
             pstream_t* process_handle;
 
             /* event stuff */
