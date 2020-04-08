@@ -16,7 +16,7 @@ namespace music {
 			std::string formats = "${command} -formats";
 			std::string protocols = "${command} -protocols";
 
-			std::string playback = "${command} -loglevel 'repeat+level+verbose' -reconnect '1' -reconnect_streamed '1' -reconnect_delay_max '5' -hide_banner -stats -i \"${path}\" -vn -bufsize '512k' -ac '${channel_count}' -ar '48000' -f 's16le' -acodec 'pcm_s16le' pipe:1";
+			std::string playback = "${command} -reconnect '1' -reconnect_streamed '1' -reconnect_delay_max '5' -hide_banner -stats -i \"${path}\" -vn -bufsize '512k' -ac '${channel_count}' -ar '48000' -f 's16le' -acodec 'pcm_s16le' pipe:1";
 			std::string playback_seek = "${command} -reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5 -hide_banner -ss ${seek_offset} -stats -i \"${path}\" -vn -bufsize 512k -ac ${channel_count} -ar 48000 -f s16le -acodec pcm_s16le pipe:1";
 
 			std::string file_playback = "${command} -hide_banner -stats -i \"${path}\" -vn -bufsize 512k -ac ${channel_count} -ar 48000 -f s16le -acodec pcm_s16le pipe:1";
