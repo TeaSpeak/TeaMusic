@@ -182,6 +182,8 @@ void FFMpegMusicPlayer::spawn_stream() {
 
 void FFMpegMusicPlayer::destroy_stream() {
     auto old_stream = std::exchange(this->stream, nullptr);
+    if(!old_stream) return;
+
     old_stream->callback_info_initialized = nullptr;
     old_stream->callback_ended = nullptr;
     old_stream->callback_abort = nullptr;
