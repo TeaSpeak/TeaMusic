@@ -23,7 +23,13 @@ include_directories(include)
 
 if (BUILD_PROVIDER_YT)
 	message("Building YouTube provider")
-	add_library(ProviderYT SHARED providers/yt/YTProvider.cpp providers/yt/YTVManager.cpp providers/yt/YoutubeMusicPlayer.cpp providers/yt/YTRegex.cpp)
+	add_library(ProviderYT SHARED
+			providers/yt/YTProvider.cpp
+			providers/yt/YTVManager.cpp
+			providers/yt/YoutubeMusicPlayer.cpp
+			providers/yt/YTRegex.cpp
+			providers/shared/libevent.cpp
+			providers/shared/CommandWrapper.cpp)
 	target_link_libraries(ProviderYT ${StringVariable_LIBRARIES_STATIC} jsoncpp_lib threadpool::static ProviderFFMpeg)
 	#The Youtube provider requires this libraries:
 	#- TeaMusic
@@ -33,6 +39,7 @@ if (BUILD_PROVIDER_YT)
 			PROPERTIES
 			PREFIX "001" #Library load order (Requires opus provider to load)
 	)
+	target_compile_options(ProviderYT PUBLIC -fvisibility=hidden)
 endif ()
 
 if(BUILD_PROVIDER_FFMPEG)
@@ -41,13 +48,14 @@ if(BUILD_PROVIDER_FFMPEG)
 			providers/ffmpeg/FFMpegProvider.cpp
 			providers/ffmpeg/FFMpegMusicPlayer.cpp 
 			providers/ffmpeg/FFMpegMusicProcess.cpp
-			providers/ffmpeg/libevent.cpp
-			providers/ffmpeg/FFMpegStream.cpp)
+			providers/ffmpeg/FFMpegStream.cpp
+			providers/shared/libevent.cpp)
 	target_link_libraries(ProviderFFMpeg ${StringVariable_LIBRARIES_STATIC} threadpool::static)
 	set_target_properties(ProviderFFMpeg
 			PROPERTIES
 			PREFIX "000" #Library load order (Requires nothink to load)
 	)
+	target_compile_options(ProviderFFMpeg PUBLIC -fvisibility=hidden)
 endif()
 
 if(BUILD_HELPERS AND OFF)

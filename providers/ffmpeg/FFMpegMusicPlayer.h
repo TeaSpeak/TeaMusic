@@ -3,7 +3,7 @@
 #include <sstream>
 #include <memory>
 #include <map>
-#include "libevent.h"
+#include "providers/shared/libevent.h"
 
 #define DEBUG_FFMPEG
 template <typename T>
@@ -162,7 +162,7 @@ namespace music::player {
             struct stream_info _stream_info{};
     };
 
-    class FFMpegMusicPlayer : public AbstractMusicPlayer {
+    class __attribute__((visibility("default"))) FFMpegMusicPlayer : public AbstractMusicPlayer {
         public:
             struct FallbackStreamInfo {
                 std::string title{};

@@ -257,7 +257,6 @@ void FFMpegMusicPlayer::callback_stream_connect_error(const std::string &error) 
         return;
 
     log::log(log::debug, "FFMpeg failed to connect: " + error);
-    stream_ref->callback_abort = nullptr; /* we already handle that */
     this->apply_error(error);
     this->fireEvent(MusicEvent::EVENT_ERROR);
 }

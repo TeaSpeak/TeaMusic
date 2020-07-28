@@ -20,6 +20,8 @@ bool libevent::resolve_functions(std::string& error) {
         goto error_cleanup;
     }
 
+    resolve_method(evthread_use_pthreads)
+
     resolve_method(event_base_new)
     resolve_method(event_base_free)
 

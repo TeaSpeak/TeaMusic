@@ -1,17 +1,20 @@
-#include <providers/yt/YoutubeMusicPlayer.h>
-#include <providers/shared/pstream.h>
 #include <StringVariable.h>
 #include <json/json.h>
 #include <memory>
-#include "YTVManager.h"
+#include <utility>
+#include <experimental/filesystem>
+
+#include "providers/shared/INIParser.h"
+#include "providers/shared/CommandWrapper.h"
+
+#include "./YTVManager.h"
+#include "./YoutubeMusicPlayer.h"
+
+namespace fs = std::experimental::filesystem;
 
 using namespace std;
 using namespace yt;
 using namespace music;
-
-YTVManager::YTVManager(const std::shared_ptr<YTProviderConfig>& cfg) : config(cfg) { }
-
-YTVManager::~YTVManager() {}
 
 static const char* audio_prefer_codec_queue[] = {"opus", "vorbis", "mp4a.40.2", "none", ""};
 
@@ -21,188 +24,135 @@ struct FMTInfo {
     string url;
 };
 
-#define YTDL_DEBUG_PREFIX "[debug] "
-inline void filter_debug(vector<string>& lines) {
-	bool debug_notified = false;
-	for(int index = 0; index < lines.size(); index++) {
-		if(lines[index].find(YTDL_DEBUG_PREFIX) == 0) {
-			if(!debug_notified) {
-				debug_notified = true;
-				log::log(log::trace, "[YT-DL] Got command execution debug:");
-			}
-			log::log(log::trace, "[YT-DL] " + lines[index]);
-			lines.erase(lines.begin() + index);
-			index--;
-		}
-	}
+inline std::vector<std::string_view> remove_debug_messages(const std::vector<std::string_view>& lines) {
+    std::vector<std::string_view> result{};
+    result.reserve(lines.size());
+
+    for(const auto& line : lines) {
+        if(line.starts_with("[debug] "))
+            continue;
+
+        result.push_back(line);
+    }
+
+    return result;
 }
 
-//Update message: WARNING: unable to extract
-//https://www.youtube.com/watch?v=ApXoWvfEYVU&list=PLOHoVaTp8R7d3L_pjuwIa6nRh4tH5nI4x
-threads::Future<std::shared_ptr<music::UrlInfo>> YTVManager::resolve_url_info(std::string video) {
-    threads::Future<std::shared_ptr<UrlInfo>> future;
+std::shared_ptr<music::UrlInfo> parse_url_info(const cw::Result& result, std::string& error) {
+    auto stderr_lines = remove_debug_messages(result.full_stderr);
+    auto stdout_lines = remove_debug_messages(result.full_stdout);
 
-    auto config = this->config;
-    _threads.execute([config, future, video](){
-	    redi::pstream proc;
-	    {
-	    	//video_url
-		    //command
-		    auto command = strvar::transform(config->commands.query_url,
-		    		strvar::StringValue{"command", config->youtubedl_command},
-                    strvar::StringValue{"video_url", video}
-            );
-		    music::log::log(music::log::debug, "[YT-DL] Executing video query command \"" + command + "\"");
-		    proc.open(command, redi::pstreams::pstderr | redi::pstreams::pstdout);
-	    }
+    /* Analyzing the response */
+    {
+        deque<string> warnings;
+        for(const auto& line : stderr_lines) {
+            if(line.find("ERROR") == std::string::npos)
+                continue;
 
-        string response;
-        string err;
-        size_t bufferLength = 512;
-        char buffer[bufferLength];
-        string part;
-        while(!proc.rdbuf()->exited()) {
-            while(proc.out().rdbuf()->in_avail() > 0){
-                auto read = proc.out().readsome(buffer, bufferLength);
-                if(read > 0) response += string(buffer, read);
+            error = line;
+            return nullptr;
+        }
+    }
+
+    if(stdout_lines.empty()) {
+        error = "command response is too small";
+        return nullptr;
+    }
+
+    std::string thumbnail;
+    deque<unique_ptr<Json::Value>> jsons;
+
+    std::string json_parse_error{};
+    for(const auto& line : stdout_lines) {
+        if(line.empty() || line[0] != '{') {
+            if(line.starts_with("https://") == 0 && thumbnail.empty()) {
+                thumbnail = line;
+                continue;
             }
 
-            while(proc.err().rdbuf()->in_avail() > 0){
-                auto read = proc.err().readsome(buffer, bufferLength);
-                if(read > 0) err += string(buffer, read);
-            }
-	        usleep(10);
+            log::log(log::trace, "[YT-DL][Query] Invalid query line \"" + std::string{line} + "\". Skip parsing");
+            continue;
         }
 
-	    /* Parsing the response */
-        vector<string> available_lines;
-	    {   //Parse the lines
-		    size_t index = 0;
-		    do {
-			    auto found = response.find('\n', index);
-			    available_lines.push_back(response.substr(index, found - index));
-			    if(available_lines.back().find_first_not_of(" \n\r") == std::string::npos) available_lines.pop_back();
-			    index = found + 1;
-		    } while(index != 0);
-	    }
+        auto root = make_unique<Json::Value>();
+        Json::CharReaderBuilder rbuilder;
+        std::string errs;
 
-	    vector<string> available_error_lines;
-	    {   //Parse the lines
-		    size_t index = 0;
-		    do {
-			    auto found = err.find('\n', index);
-			    available_error_lines.push_back(err.substr(index, found - index));
-			    if(available_error_lines.back().find_first_not_of(" \n\r") == std::string::npos) available_error_lines.pop_back();
-			    index = found + 1;
-		    } while(index != 0);
-	    }
+        istringstream jsonStream{std::string{line}};
+        bool parsingSuccessful = Json::parseFromStream(rbuilder, jsonStream, &*root, &error);
+        if (!parsingSuccessful) {
+            if(error.empty())
+                json_parse_error = error;
+            log::log(log::trace, "[YT-DL][Query] Failed to parse json: " + error);
+            continue;
+        }
 
-	    /* Analyzing the response */
-	    filter_debug(available_error_lines);
-	    filter_debug(available_lines);
+        jsons.push_back(move(root));
+    }
 
-	    {
-		    deque<string> warnings;
-		    for(const auto& error : available_error_lines) {
-			    if(error.find("ERROR") != std::string::npos) {
-				    future.executionFailed(error);
-				    return;
-			    }
-			    if(error.find("WARNING:") == 0) {
-				    warnings.push_back(error);
-				    continue;
-			    }
-		    }
-		    if(!warnings.empty()) {
-			    log::log(log::trace, "[YT-DL][Query] Received warning:");
-				for(const auto& warning : warnings)
-					log::log(log::trace, "[YT-DL][Query]   " + warning);
-		    }
-	    }
+    /* its a single video */
+    if(jsons.empty()) {
+        error = json_parse_error.empty() ? "command execution resulted in no result" : json_parse_error;
+        return nullptr;
+    } else if(jsons.size() == 1) {
+        auto root = *jsons.front();
 
-	    if(available_lines.empty()) {
-		    log::log(log::err, "[YT-DL] Malformed response (response to small!)");
-		    log::log(log::debug, "[YT-DL] Response:");
-		    for(const auto& entry : available_lines)
-			    log::log(log::debug, "[YT-DL] " + entry);
-		    future.executionFailed("Malformed response (to small)");
-		    return;
-	    }
+        auto info = make_shared<UrlSongInfo>();
+        info->type = UrlType::TYPE_VIDEO;
+        info->description = root["description"].asString();
+        info->title = root["fulltitle"].asString();
+        info->length = std::chrono::seconds{root["duration"].asInt()};
+        if(!thumbnail.empty())
+            info->thumbnail = std::make_shared<ThumbnailUrl>(thumbnail);
+        info->metadata["upload_date"] = root["upload_date"].asString();
+        info->metadata["live"] = std::to_string(!root["is_live"].isNull() && root["is_live"].asBool());
 
-	    std::string thumbnail;
-	    deque<unique_ptr<Json::Value>> jsons;
-	    for(const auto& line : available_lines) {
-	    	if(line.empty() || line[0] != '{') {
-	    	    if(line.find("https://") == 0 && thumbnail.empty()) {
-                    thumbnail = line;
-                    continue;
-	    	    }
+        if(root["thumbnail"].isArray() && !root["thumbnail"].empty())
+            info->metadata["thumbnail"] = root["thumbnail"][0]["url"].asString();
 
-			    log::log(log::trace, "[YT-DL][Query] Invalid query line \"" + line + "\". Skip parsing");
-			    continue;
-	    	}
+        return info;
+    } else {
+        if((*jsons[0])["requested_formats"].isArray()) {
+            error = "playlist isn't a playlist format";
+            return nullptr;
+        }
 
-		    auto root = make_unique<Json::Value>();
-		    Json::CharReaderBuilder rbuilder;
-		    std::string errs;
+        auto info = make_shared<UrlPlaylistInfo>();
+        info->type = UrlType::TYPE_PLAYLIST;
 
-		    istringstream jsonStream(line);
-		    bool parsingSuccessful = Json::parseFromStream(rbuilder, jsonStream, &*root, &errs);
-		    if (!parsingSuccessful) {
-			    log::log(log::trace, "[YT-DL][Query] Invalid query line \"" + line + "\". Failed to parse json: " + errs);
-			    continue;
-		    }
+        size_t entry_id = 0;
+        for(const auto& json_ptr : jsons) {
+            Json::Value& json = *json_ptr;
+            auto entry = make_shared<UrlSongInfo>();
+            entry->url = "https://www.youtube.com/watch?v=" + json["id"].asString();
+            entry->title = json["title"].asString();
+            entry->description = "Playlist entry #" + to_string(++entry_id);
+            info->entries.push_back(move(entry));
+        }
 
-		    jsons.push_back(move(root));
-	    }
+        return info;
+    }
+}
 
-	    /* its a single video */
-	    if(jsons.empty()) {
-		    future.executionFailed("no result");
-	    } else if(jsons.size() == 1) {
-	    	auto root = *jsons.front();
-		    log::log(log::trace, "[YT-DL][Query] Query for URL " + video + " seems like an video.");
+threads::Future<std::shared_ptr<music::UrlInfo>> YTVManager::resolve_url_info(const std::string& video) {
+    threads::Future<std::shared_ptr<UrlInfo>> future;
 
-		    auto info = make_shared<UrlSongInfo>();
-		    info->type = UrlType::TYPE_VIDEO;
-		    info->url = video; /* dont use resolved url because its just tmp */
-		    info->description = root["description"].asString();
-		    info->title = root["fulltitle"].asString();
-            info->length = std::chrono::seconds{root["duration"].asInt()};
-            if(!thumbnail.empty())
-                info->thumbnail = std::make_shared<ThumbnailUrl>(thumbnail);
-		    info->metadata["upload_date"] = root["upload_date"].asString();
-		    info->metadata["live"] = std::to_string(!root["is_live"].isNull() && root["is_live"].asBool());
-
-		    if(root["thumbnail"].isArray() && !root["thumbnail"].empty())
-		        info->metadata["thumbnail"] = root["thumbnail"][0]["url"].asString();
-
-		    future.executionSucceed(info);
-		    return;
-	    } else {
-	    	if((*jsons[0])["requested_formats"].isArray()) {
-			    future.executionFailed("playlist isnt a playlist format");
-			    return;
-	    	}
-
-		    auto info = make_shared<UrlPlaylistInfo>();
-	        info->type = UrlType::TYPE_PLAYLIST;
-	        info->url = video;
-
-	        size_t entry_id = 0;
-	        for(const auto& json_ptr : jsons) {
-	        	Json::Value& json = *json_ptr;
-	        	auto entry = make_shared<UrlSongInfo>();
-	        	entry->url = "https://www.youtube.com/watch?v=" + json["id"].asString();
-	        	entry->title = json["title"].asString();
-	        	entry->description = "Playlist entry #" + to_string(++entry_id);
-	            info->entries.push_back(move(entry));
-	        }
-
-		    future.executionSucceed(info);
-		    return;
-	    }
+    auto config = this->configuration();
+    auto command = strvar::transform(config->commands.query_url,
+                                     strvar::StringValue{"command", config->youtubedl_command},
+                                     strvar::StringValue{"video_url", video}
+    );
+    cw::execute(command, [future](const cw::Result& result) {
+        std::string error{};
+        auto info = parse_url_info(result, error);
+        if(!info)
+            future.executionFailed(error.empty() ? "empty info" : error);
+        else
+            future.executionSucceed(info);
+    }, [future](const std::string& error) {
+        future.executionFailed(error);
     });
+
     return future;
 }
 
@@ -210,7 +160,7 @@ threads::Future<std::shared_ptr<music::MusicPlayer>> YTVManager::create_stream(c
     threads::Future<std::shared_ptr<music::MusicPlayer>> future;
 
     auto fut = resolve_stream_info(video);
-    fut.waitAndGetLater([future, fut](std::shared_ptr<AudioInfo> audio){
+    fut.waitAndGetLater([future, fut](const std::shared_ptr<AudioInfo>& audio){
         if(fut.succeeded() && audio) return future.executionSucceed(make_shared<music::player::YoutubeMusicPlayer>(audio));
         else return future.executionFailed(fut.errorMegssage());
     }, nullptr);
@@ -218,157 +168,145 @@ threads::Future<std::shared_ptr<music::MusicPlayer>> YTVManager::create_stream(c
     return future;
 }
 
-//https://www.youtube.com/watch?v=ApXoWvfEYVU&list=PLOHoVaTp8R7d3L_pjuwIa6nRh4tH5nI4x
-threads::Future<std::shared_ptr<AudioInfo>> YTVManager::resolve_stream_info(std::string video) {
+std::shared_ptr<AudioInfo> parse_stream_info(const cw::Result& result, std::string& error) {
+    auto stderr_lines = remove_debug_messages(result.full_stderr);
+    auto stdout_lines = remove_debug_messages(result.full_stdout);
+
+    /* Analyzing the response */
+    {
+        deque<string> warnings;
+        for(const auto& line : stderr_lines) {
+            if(line.find("ERROR") == std::string::npos)
+                continue;
+
+            error = line;
+            return nullptr;
+        }
+    }
+
+    if(stdout_lines.size() < 2) {
+        error = "command response is too small";
+        return nullptr;
+    }
+
+    std::string thumbnail{stdout_lines[stdout_lines.size() - 2]};
+    std::string json_data_string{std::string{stdout_lines[stdout_lines.size() - 1]}};
+
+    log::log(log::trace, "[YT-DL] Got thumbnail response: " + thumbnail);
+    log::log(log::trace, "[YT-DL] Got json response: " + json_data_string);
+
+    Json::Value root;
+    Json::CharReaderBuilder rbuilder;
+    std::string json_parse_error;
+
+    istringstream jsonStream(std::string{stdout_lines[stdout_lines.size() - 1]});
+    bool parsingSuccessful = Json::parseFromStream(rbuilder, jsonStream, &root, &json_parse_error);
+    if (!parsingSuccessful) {
+        error = "Failed to parse yt json response. (" + json_parse_error + ")";
+        return nullptr;
+    }
+
+    auto stream = !root["is_live"].isNull() && root["is_live"].asBool();
+    log::log(log::debug, "[YT-DL] Song title: " + root["fulltitle"].asString());
+    log::log(log::debug, "[YT-DL] Song id: " + root["id"].asString());
+    log::log(log::debug, string() + "[YT-DL] Live stream: " + (stream ? "yes" : "no"));
+    //is_live
+
+    auto requests = root["formats"];
+    log::log(log::debug, "Request count: " + to_string(requests.size()));
+
+    vector<FMTInfo> urls;
+    for (auto request : requests) {
+        auto fmt = request["format"].asString();
+        int rate = request["abr"].asInt();
+
+        if(stream) {
+            if(fmt.find("HLS") == std::string::npos) continue;
+        } else {
+            if(fmt.find("audio only") == std::string::npos) continue;
+        }
+        urls.push_back(FMTInfo{request["acodec"].asString(), rate, request["url"].asString()});
+    }
+    if(urls.empty()) {
+        error = "Failed to get a valid audio stream";
+        return nullptr;
+    }
+
+    int index = -1;
+    int abr = -1; //Audio bitrate
+    string streamUrl;
+    for(const auto& entry : urls) {
+        int i = 0;
+        while(audio_prefer_codec_queue[i]) {
+            if(entry.codec == audio_prefer_codec_queue[i])
+                break;
+            i++;
+        }
+        if(i == sizeof(audio_prefer_codec_queue) / sizeof(*audio_prefer_codec_queue)) {
+            log::log(log::err, "[YT-DL] Could not resolve yt audio quality '" + entry.codec + "'");
+            i = -2;
+        }
+
+        bool use = false;
+        use |= index == -1 || abr == -1;
+        if(!use) use |= i < index && index != -2;
+        if(!use) use |= abr < entry.bitrate && entry.bitrate != 0;
+        if(use) {
+            index = i;
+            abr = entry.bitrate;
+            streamUrl = entry.url;
+
+        }
+    }
+    if(streamUrl.empty()) {
+        log::log(log::err, "[YT-DL] Failed to get a valid audio stream with valid quality!");
+        streamUrl = urls[0].url;
+    }
+    log::log(log::debug, string() + "[YT-DL] Using audio quality " + audio_prefer_codec_queue[index]);
+    return std::make_shared<AudioInfo>(AudioInfo{root["fulltitle"].asString(), "unknown", thumbnail, streamUrl, stream});
+}
+
+threads::Future<std::shared_ptr<AudioInfo>> YTVManager::resolve_stream_info(const std::string& video) {
 	threads::Future<std::shared_ptr<AudioInfo>> future;
 
-	auto config = this->config;
-	_threads.execute([config, future, video](){
-		redi::pstream proc;
-		{
-			//video_url
-			//command
-			auto command = strvar::transform(config->commands.query_video,
-                         strvar::StringValue{"command", config->youtubedl_command},
-                         strvar::StringValue{"video_url", video}
-			);
-			music::log::log(music::log::debug, "[YT-DL] Executing url query command \"" + command + "\"");
-			proc.open(command, redi::pstreams::pstderr | redi::pstreams::pstdout);
-		}
+    auto config = this->configuration();
+    auto command = strvar::transform(config->commands.query_video,
+                                     strvar::StringValue{"command", config->youtubedl_command},
+                                     strvar::StringValue{"video_url", video}
+    );
+    cw::execute(command, [future](const cw::Result& result) {
+        std::string error{};
+        auto info = parse_stream_info(result, error);
+        if(!info)
+            future.executionFailed(error.empty() ? "empty info" : error);
+        else
+            future.executionSucceed(info);
+    }, [future](const std::string& error) {
+        future.executionFailed(error);
+    });
 
-		string response;
-		string err;
-		size_t bufferLength = 512;
-		char buffer[bufferLength];
-		string part;
-		while(!proc.rdbuf()->exited()) {
-			while(proc.out().rdbuf()->in_avail() > 0){
-				auto read = proc.out().readsome(buffer, bufferLength);
-				if(read > 0) response += string(buffer, read);
-			}
-
-			while(proc.err().rdbuf()->in_avail() > 0){
-				auto read = proc.err().readsome(buffer, bufferLength);
-				if(read > 0) err += string(buffer, read);
-			}
-			usleep(10);
-		}
-
-		/* Parsing the response */
-		vector<string> available_lines;
-		{   //Parse the lines
-			size_t index = 0;
-			do {
-				auto found = response.find('\n', index);
-				available_lines.push_back(response.substr(index, found - index));
-				if(available_lines.back().find_first_not_of(" \n\r") == std::string::npos) available_lines.pop_back();
-				index = found + 1;
-			} while(index != 0);
-		}
-
-		vector<string> available_error_lines;
-		{   //Parse the lines
-			size_t index = 0;
-			do {
-				auto found = err.find('\n', index);
-				available_error_lines.push_back(err.substr(index, found - index));
-				if(available_error_lines.back().find_first_not_of(" \n\r") == std::string::npos) available_error_lines.pop_back();
-				index = found + 1;
-			} while(index != 0);
-		}
-
-		/* Analyzing the response */
-		filter_debug(available_error_lines);
-		filter_debug(available_lines);
-
-		for(const auto& error : available_error_lines)
-			if(error.find("ERROR") != std::string::npos) {
-				future.executionFailed(error);
-				return;
-			}
-
-		if(available_lines.size() < 2) {
-			log::log(log::err, "[YT-DL] Malformed response (response to small!)");
-			log::log(log::debug, "[YT-DL] Response:");
-			for(const auto& entry : available_lines)
-				log::log(log::debug, "[YT-DL] " + entry);
-			future.executionFailed("Malformed response (to small)");
-			return;
-		}
-		log::log(log::trace, "[YT-DL] Got thumbnail response: " + available_lines[available_lines.size() - 2]);
-		log::log(log::trace, "[YT-DL] Got json response: " + available_lines[available_lines.size() - 1]);
-		auto thumbnail = available_lines[available_lines.size() - 2];
-
-		Json::Value root;
-		Json::CharReaderBuilder rbuilder;
-		std::string errs;
-
-		istringstream jsonStream(available_lines[available_lines.size() - 1]);
-		bool parsingSuccessful = Json::parseFromStream(rbuilder, jsonStream, &root, &errs);
-		if (!parsingSuccessful)
-		{
-			future.executionFailed("Failed to parse yt json response. (" + errs + ")");
-			return;
-		}
-
-		auto stream = !root["is_live"].isNull() && root["is_live"].asBool();
-		log::log(log::debug, "[YT-DL] Song title: " + root["fulltitle"].asString());
-		log::log(log::debug, "[YT-DL] Song id: " + root["id"].asString());
-		log::log(log::debug, string() + "[YT-DL] Live stream: " + (stream ? "yes" : "no"));
-		//is_live
-
-		auto requests = root["formats"];
-		log::log(log::debug, "Request count: " + to_string(requests.size()));
-
-		vector<FMTInfo> urls;
-		for (auto request : requests) {
-			auto fmt = request["format"].asString();
-			int rate = request["abr"].asInt();
-
-			if(stream) {
-				if(fmt.find("HLS") == std::string::npos) continue;
-			} else {
-				if(fmt.find("audio only") == std::string::npos) continue;
-			}
-			urls.push_back(FMTInfo{request["acodec"].asString(), rate, request["url"].asString()});
-		}
-		if(urls.empty()) {
-			future.executionFailed("Failed to get a valid audio stream");
-			return;
-		}
-
-		int index = -1;
-		int abr = -1; //Audio bitrate
-		string streamUrl;
-		for(const auto& entry : urls) {
-			int i = 0;
-			while(audio_prefer_codec_queue[i]) {
-				if(entry.codec == audio_prefer_codec_queue[i])
-					break;
-				i++;
-			}
-			if(i == sizeof(audio_prefer_codec_queue) / sizeof(*audio_prefer_codec_queue)) {
-				log::log(log::err, "[YT-DL] Could not resolve yt audio quality '" + entry.codec + "'");
-				i = -2;
-			}
-
-			bool use = false;
-			use |= index == -1 || abr == -1;
-			if(!use) use |= i < index && index != -2;
-			if(!use) use |= abr < entry.bitrate && entry.bitrate != 0;
-			if(use) {
-				index = i;
-				abr = entry.bitrate;
-				streamUrl = entry.url;
-
-			}
-		}
-		if(streamUrl.empty()) {
-			log::log(log::err, "[YT-DL] Failed to get a valid audio stream with valid quality!");
-			streamUrl = urls[0].url;
-		}
-		log::log(log::debug, string() + "[YT-DL] Using audio quality " + audio_prefer_codec_queue[index]);
-		future.executionSucceed(std::make_shared<AudioInfo>(AudioInfo{root["fulltitle"].asString(), "unknown", thumbnail, streamUrl, stream}));
-	});
 	return future;
+}
+
+std::shared_ptr<YTProviderConfig> YTVManager::configuration() const {
+    auto config = std::make_shared<YTProviderConfig>();
+
+    auto config_path = fs::u8path("providers/config_youtube.ini");
+    if(fs::exists(config_path)) {
+        INIReader ini_reader(config_path.string());
+
+        music::log::log(music::log::trace, "[YT-DL] Using config file located at " + config_path.string());
+        if(ini_reader.ParseError()) {
+            music::log::log(music::log::err, "[YT-DL] Could not parse youtube.ini config! Using default values");
+        } else {
+            config->youtubedl_command = ini_reader.Get("general", "youtubedl_command", config->youtubedl_command);
+            config->commands.version = ini_reader.Get("commands", "version", config->commands.version);
+            config->commands.query_video = ini_reader.Get("commands", "query_video", config->commands.query_video);
+            config->commands.query_url = ini_reader.Get("commands", "query_url", config->commands.query_url);
+        }
+    } else {
+        music::log::log(music::log::trace, "[YT-DL] Missing configuration file. Using default values");
+    }
+
+    return config;
 }

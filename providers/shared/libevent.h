@@ -9,6 +9,8 @@ namespace libevent {
     struct function_handle {
         void* dl_handle;
 
+        int(*evthread_use_pthreads)();
+
         void*(*event_base_new)();
         void(*event_base_free)(void *eb);
 

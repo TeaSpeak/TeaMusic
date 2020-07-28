@@ -540,7 +540,7 @@ void FFMpegStream::callback_eof() {
             exit_code = 0;
         } else {
             exited = this->process_stream->rdbuf()->exited();
-            exit_code = this->process_stream->rdbuf()->status();;
+            exit_code = this->process_stream->rdbuf()->status();
         }
     }
 
@@ -593,7 +593,7 @@ void FFMpegStream::callback_error(FFMpegProcessHandle::ErrorCode code, int data)
         if(!this->_stream_info.initialized) {
             if(auto callback{this->callback_connect_error}; callback)
                 callback(this->meta_info_buffer.empty() ? "ffmpeg exited with " + std::to_string(data) : this->meta_info_buffer);
-
+            return; /* the this pointer might dangle here */
         }
     }
     if(auto callback{this->callback_abort}; callback)

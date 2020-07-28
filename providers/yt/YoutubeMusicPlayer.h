@@ -5,21 +5,20 @@
 namespace yt {
     class AudioInfo;
 }
-namespace music {
-    namespace player {
-        class YoutubeMusicPlayer : public FFMpegMusicPlayer {
-            public:
-                explicit YoutubeMusicPlayer(std::shared_ptr<yt::AudioInfo>);
-                ~YoutubeMusicPlayer() override;
 
-                std::string songTitle() override;
+namespace music::player {
+    class YoutubeMusicPlayer : public FFMpegMusicPlayer {
+        public:
+            explicit YoutubeMusicPlayer(std::shared_ptr<yt::AudioInfo>);
+            ~YoutubeMusicPlayer() override;
 
-                std::string songDescription() override;
+            std::string songTitle() override;
 
-                std::deque<std::shared_ptr<Thumbnail>> thumbnails() override;
+            std::string songDescription() override;
 
-            private:
-                std::shared_ptr<yt::AudioInfo> video;
-        };
-    }
+            std::deque<std::shared_ptr<Thumbnail>> thumbnails() override;
+
+        private:
+            std::shared_ptr<yt::AudioInfo> video;
+    };
 }

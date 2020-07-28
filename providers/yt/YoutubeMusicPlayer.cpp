@@ -1,5 +1,5 @@
-#include "YoutubeMusicPlayer.h"
-#include "YTVManager.h"
+#include "./YoutubeMusicPlayer.h"
+#include "./YTVManager.h"
 
 using namespace music::player;
 

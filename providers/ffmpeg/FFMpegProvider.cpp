@@ -173,7 +173,7 @@ inline vector<string> available_fmt(const std::shared_ptr<music::FFMpegProviderC
     return resVec;
 }
 
-std::shared_ptr<music::manager::PlayerProvider> create_provider() {
+extern "C" std::shared_ptr<music::manager::PlayerProvider> EXPORT create_provider() {
 	std::shared_ptr<music::FFMpegProviderConfig> config = make_shared<music::FFMpegProviderConfig>();
 
 	{
