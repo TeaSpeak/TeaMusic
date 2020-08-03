@@ -65,7 +65,7 @@ std::shared_ptr<music::UrlInfo> parse_url_info(const cw::Result& result, std::st
     std::string json_parse_error{};
     for(const auto& line : stdout_lines) {
         if(line.empty() || line[0] != '{') {
-            if(line.starts_with("https://") == 0 && thumbnail.empty()) {
+            if(line.starts_with("https://") && thumbnail.empty()) {
                 thumbnail = line;
                 continue;
             }
@@ -142,13 +142,15 @@ threads::Future<std::shared_ptr<music::UrlInfo>> YTVManager::resolve_url_info(co
                                      strvar::StringValue{"command", config->youtubedl_command},
                                      strvar::StringValue{"video_url", video}
     );
-    cw::execute(command, [future](const cw::Result& result) {
+    cw::execute(command, [future, video](const cw::Result& result) {
         std::string error{};
         auto info = parse_url_info(result, error);
         if(!info)
             future.executionFailed(error.empty() ? "empty info" : error);
-        else
+        else {
+            info->url = video;
             future.executionSucceed(info);
+        }
     }, [future](const std::string& error) {
         future.executionFailed(error);
     });
